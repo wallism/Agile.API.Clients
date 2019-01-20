@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.271
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Agile.API.Clients.Tests", "Agile.API.Clients.Tests\Agile.API.Clients.Tests.csproj", "{115E11B9-FCDE-41BF-9067-BD5CACE74FD7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Agile.API.Clients", "Agile.API.Clients\Agile.API.Clients.csproj", "{D1D89F3B-A17F-4426-81B1-7CD1E923B05C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{115E11B9-FCDE-41BF-9067-BD5CACE74FD7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{115E11B9-FCDE-41BF-9067-BD5CACE74FD7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{115E11B9-FCDE-41BF-9067-BD5CACE74FD7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{115E11B9-FCDE-41BF-9067-BD5CACE74FD7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D1D89F3B-A17F-4426-81B1-7CD1E923B05C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D1D89F3B-A17F-4426-81B1-7CD1E923B05C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D1D89F3B-A17F-4426-81B1-7CD1E923B05C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D1D89F3B-A17F-4426-81B1-7CD1E923B05C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B7837715-E79D-40D4-8DED-B0EB2AC4274F}
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,15 @@
+**/obj/
+**/bin/
+**/debug/
+**/release/
+*.user
+*.suo
+
+# Visual Studio
+.vs/
+
+
+# ReSharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
