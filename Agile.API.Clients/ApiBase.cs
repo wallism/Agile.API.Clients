@@ -2,8 +2,6 @@
 using System.Diagnostics;
 using System.IO;
 using System.Net;
-using System.Runtime.CompilerServices;
-using System.Threading;
 using System.Threading.Tasks;
 using Agile.API.Client.CallHandling;
 using Agile.API.Client.Helpers;
@@ -13,11 +11,7 @@ namespace Agile.API.Client
 {
     public abstract class ApiBase
     {
-        protected ApiBase()
-        {
-        }
-
-        public void Initialize(string apiKey, string apiSecret = null, RateLimit rateLimit = null)
+        protected ApiBase(string apiKey, string apiSecret = null, RateLimit rateLimit = null)
         {
             ApiKey = apiKey;
             ApiSecret = apiSecret;
