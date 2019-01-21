@@ -1,11 +1,13 @@
 using System.Threading.Tasks;
 using Agile.API.Client.CallHandling;
+using PennedObjects.RateLimiting;
 
 namespace Agile.API.Client.Tests.Mocks
 {
     public class MockApi : ApiBase
     {
-        public MockApi() : base()
+        public MockApi(string apiKey, string apiSecret = null, RateLimit rateLimit = null) 
+            : base(apiKey, apiSecret, rateLimit)
         {
         }
 

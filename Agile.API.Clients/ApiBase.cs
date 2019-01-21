@@ -19,9 +19,9 @@ namespace Agile.API.Client
                 rateGate = new RateGate(rateLimit);
         }
 
-        protected string ApiKey { get; private set; }
+        protected string ApiKey { get; }
 
-        protected string ApiSecret { get; private set; }
+        protected string ApiSecret { get; }
 
         protected abstract string BaseUrl { get; }
         /// <summary>

@@ -17,13 +17,16 @@ namespace Agile.API.Client.Tests
     [TestFixture]
     public class RateGateTests
     {
+        private MockApi GetMockApi(RateLimit rateLimit)
+        {
+            return new MockApi("KEY", "SECRET", rateLimit);
+        }
 
         [Test]
         public async Task CallReturns_404_ErrorResult()
         {
             // get api with Rate limit of 3/second
-            var api = new MockApi();
-            api.Initialize("KEY", "SECRET", RateLimit.Build(3, TimeSpan.FromMilliseconds(1000)));
+            var api = GetMockApi(RateLimit.Build(3, TimeSpan.FromMilliseconds(1000)));
 
             var result = await api.GetWidget(1);
             Assert.IsTrue(result is CallErrorResult<Widget>);
@@ -34,8 +37,7 @@ namespace Agile.API.Client.Tests
         public async Task RateLimitOf_2PerSecond_FifthCallOccursAfter_2Seconds()
         {
             // get api with Rate limit of 2/second
-            var api = new MockApi();
-            api.Initialize("KEY", "SECRET", RateLimit.Build(2, TimeSpan.FromMilliseconds(1000)));
+            var api = GetMockApi(RateLimit.Build(2, TimeSpan.FromMilliseconds(1000)));
 
             var timer = Stopwatch.StartNew();
             // TODO also test running all on different threads
@@ -66,8 +68,7 @@ namespace Agile.API.Client.Tests
         [Test]
         public async Task MultiThreadTest()
         {
-            mockApi = new MockApi();
-            mockApi.Initialize("KEY", "SECRET", RateLimit.Build(2, TimeSpan.FromMilliseconds(1000)));
+            mockApi = GetMockApi(RateLimit.Build(2, TimeSpan.FromMilliseconds(1000)));
             
             var timer = Stopwatch.StartNew();
             Console.WriteLine($"[Thread:{Thread.CurrentThread.ManagedThreadId}] 0 {timer.ElapsedMilliseconds} - started");
