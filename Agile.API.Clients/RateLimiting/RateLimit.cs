@@ -7,7 +7,8 @@ namespace PennedObjects.RateLimiting
         /// <summary>
         /// 
         /// </summary>
-        /// <param name="occurrences">The number of items in the sequence that are allowed to be processed per time unit.</param>
+        /// <param name="occurrences">The number of items in the sequence that are allowed to be processed per time unit.
+        /// Set to 0 for no limit.</param>
         /// <param name="timeUnit">Length of the time unit.</param>
         private RateLimit(int occurrences, TimeSpan timeUnit)
         {
@@ -21,5 +22,7 @@ namespace PennedObjects.RateLimiting
         public int Occurrences { get;  }
 
         public TimeSpan TimeUnit { get; }
+
+        public bool HasLimit => Occurrences != 0;
     }
 }

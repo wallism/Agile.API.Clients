@@ -3,8 +3,9 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Agile.API.Client.CallHandling;
-using Agile.API.Client.Tests.Mocks;
+using Agile.API.Clients;
+using Agile.API.Clients.CallHandling;
+using Agile.API.Clients.Tests.Mocks;
 using NUnit.Framework;
 using PennedObjects.RateLimiting;
 
@@ -17,9 +18,14 @@ namespace Agile.API.Client.Tests
     [TestFixture]
     public class RateGateTests
     {
-        private MockApi GetMockApi(RateLimit rateLimit)
+        [OneTimeSetUp]
+        public void FixtureSetup()
         {
-            return new MockApi("KEY", "SECRET", rateLimit);
+        }
+
+        private WidgetApi GetMockApi(RateLimit rateLimit)
+        {
+            return new WidgetApi("KEY", "SECRET", rateLimit);
         }
 
         [Test]
@@ -29,7 +35,7 @@ namespace Agile.API.Client.Tests
             var api = GetMockApi(RateLimit.Build(3, TimeSpan.FromMilliseconds(1000)));
 
             var result = await api.GetWidget(1);
-            Assert.IsTrue(result is CallErrorResult<Widget>);
+            Assert.IsTrue(result is CallResult<Widget>);
             Assert.IsFalse(result.WasSuccessful);
         }
 
@@ -68,7 +74,7 @@ namespace Agile.API.Client.Tests
         [Test]
         public async Task MultiThreadTest()
         {
-            mockApi = GetMockApi(RateLimit.Build(2, TimeSpan.FromMilliseconds(1000)));
+            _widgetApi = GetMockApi(RateLimit.Build(2, TimeSpan.FromMilliseconds(1000)));
             
             var timer = Stopwatch.StartNew();
             Console.WriteLine($"[Thread:{Thread.CurrentThread.ManagedThreadId}] 0 {timer.ElapsedMilliseconds} - started");
@@ -84,15 +90,15 @@ namespace Agile.API.Client.Tests
         }
 
 
-        private MockApi mockApi;
+        private WidgetApi _widgetApi;
 
-        private async Task<ServiceCallResult<Widget>> CallApiInNewThread(int number, Stopwatch timer)
+        private async Task<CallResult<Widget>> CallApiInNewThread(int number, Stopwatch timer)
         {
             // we want to test that the RateGate is indeed thread safe,
             // so must force to run in a new thread, if we don't the call to GetWidget will likely be on the same Thread every time
             return await Task.Run(async () =>
             {
-                var result = await mockApi.GetWidget(number);
+                var result = await _widgetApi.GetWidget(number);
                 Console.WriteLine($"[Thread:{Thread.CurrentThread.ManagedThreadId}] {number} {timer.ElapsedMilliseconds}ms");
                 return result;
             });

@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Agile.API.Client.Helpers
+namespace Agile.API.Clients.Helpers
 {
     public static class ServerTime
     {

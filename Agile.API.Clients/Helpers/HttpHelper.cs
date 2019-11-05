@@ -1,6 +1,6 @@
 ﻿using System.Net;
 
-namespace Agile.API.Client.Helpers
+namespace Agile.API.Clients.Helpers
 {
     /// <summary>
     /// http helper stuff

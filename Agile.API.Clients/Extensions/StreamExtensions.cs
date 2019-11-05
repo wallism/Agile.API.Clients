@@ -2,7 +2,7 @@
 using System.IO;
 using System.Text;
 
-namespace Agile.API.Client.Extensions
+namespace Agile.API.Clients.Extensions
 {
     public static class StreamExtensions
     {

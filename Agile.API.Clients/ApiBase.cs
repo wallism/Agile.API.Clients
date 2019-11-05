@@ -2,21 +2,66 @@
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
-using Agile.API.Client.CallHandling;
-using Agile.API.Client.Helpers;
+using Agile.API.Clients.CallHandling;
+using Agile.API.Clients.Helpers;
 using PennedObjects.RateLimiting;
 
-namespace Agile.API.Client
+namespace Agile.API.Clients
 {
     public abstract class ApiBase
     {
-        protected ApiBase(string apiKey, string apiSecret = null, RateLimit rateLimit = null)
+        protected ApiBase(string apiKey, RateLimit rateLimit, string apiSecret = "")
         {
             ApiKey = apiKey;
             ApiSecret = apiSecret;
-            if (rateLimit != null)
-                rateGate = new RateGate(rateLimit);
+
+            HasRateLimit = rateLimit.HasLimit;
+            rateGate = new RateGate(HasRateLimit 
+                ? rateLimit 
+                : RateLimit.Build(9999, TimeSpan.FromMilliseconds(1)));
+ 
+
+            // one httpClient per api for now (may be better than one for all anyway)
+            var handler = new HttpClientHandler
+            {
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+            };
+            httpClient = new HttpClient(handler);
+        }
+
+
+        public ApiMethod<T> PublicGet<T>(MethodPriority priority) where T : class
+        {
+            return PublicGet<T>(priority, MediaTypes.JSON);
+        }
+        public ApiMethod<T> PublicGet<T>(MethodPriority priority, MediaTypeHeaderValue contentType) where T : class
+        {
+            return new PublicMethod<T>(this, HttpMethod.Get, priority, contentType);
+        }
+
+
+        public ApiMethod<T> PrivateGet<T>(MethodPriority priority) where T : class
+        {
+            return PrivateGet<T>(priority, MediaTypes.JSON);
+        }
+        public ApiMethod<T> PrivateGet<T>(MethodPriority priority, MediaTypeHeaderValue contentType) where T : class
+        {
+            return new PrivateMethod<T>(this, HttpMethod.Get, priority, contentType);
+        }
+
+
+        public ApiMethod<T> PrivatePost<T>(MethodPriority priority) where T : class
+        {
+            return PrivatePost<T>(priority, MediaTypes.JSON);
+        }
+        public ApiMethod<T> PrivatePost<T>(MethodPriority priority, MediaTypeHeaderValue contentType) where T : class
+        {
+            return new PrivateMethod<T>(this, HttpMethod.Post, priority, contentType);
         }
 
         protected string ApiKey { get; }
@@ -24,21 +69,31 @@ namespace Agile.API.Client
         protected string ApiSecret { get; }
 
         protected abstract string BaseUrl { get; }
+
+        private readonly HttpClient httpClient;
+
         /// <summary>
         /// Identifies which API it is (useful for logging)
         /// </summary>
-        public abstract string Code { get; }
+        public abstract string ApiId { get; }
         
-        private RateGate rateGate;
-        public bool HasRateLimit => rateGate != null;
 
-        protected virtual string GetPublicRequestAddress(string path, string querystring = null)
+        public bool HasRateLimit { get; }
+        private readonly RateGate rateGate;
+
+
+        protected virtual long GetNonce()
         {
-            // by default public is same as private, separate overload provided because for some API's they are indeed different.
-            return GetPrivateRequestAddress(path, querystring);
+            return ServerTime.UnixTimeStampUtc();
         }
 
-        protected virtual string GetPrivateRequestAddress(string path, string querystring = null)
+        protected virtual string GetPublicRequestUri(string path, string querystring = "")
+        {
+            // by default public is same as private, separate overload provided because for some API's they are indeed different.
+            return GetPrivateRequestUri(path, querystring);
+        }
+
+        protected virtual string GetPrivateRequestUri(string path, string querystring = "")
         {
             var url = $"{BaseUrl}/{path}";
             return string.IsNullOrWhiteSpace(querystring)
@@ -46,167 +101,191 @@ namespace Agile.API.Client
                 : $"{url}?{querystring}";
         }
 
-        protected virtual long GetNonce()
+
+        protected virtual void SetPublicRequestProperties(HttpRequestMessage request, string method, object? rawPayload = null, string propsWithNonce = "")
         {
-            return ServerTime.UnixTimeStampUtc();
         }
 
-        protected virtual void SetPublicRequestProperties(HttpWebRequest request)
-        {
-            AddDefaultHeaders(request);
-        }
-
-        protected virtual void SetPrivateRequestProperties(HttpWebRequest request, string method, object rawPayload = null, string propsWithNonce = null)
-        {
-            AddDefaultHeaders(request);
-        }
-
-        private static void AddDefaultHeaders(HttpWebRequest request)
-        {
-            request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
-        }
-
-        
-        protected async Task<ServiceCallResult<T>> Get<T>(ApiMethod apiMethod,
-            string path,
-            string querystring = null)
-        {
-            return await Call<T>("GET", apiMethod, path, null, querystring);
-        }
-
-        protected async Task<ServiceCallResult<T>> Post<T>(ApiMethod apiMethod,
-            string path,
-            string payload = null,
-            string querystring = null)
-        {
-            return await Call<T>("POST", apiMethod, path, payload, querystring);
-        }
-
-        protected async Task<ServiceCallResult<T>> Put<T>(ApiMethod apiMethod,
-            string path,
-            string payload = null,
-            string querystring = null)
-        {
-            return await Call<T>("PUT", apiMethod, path, payload, querystring);
-        }
-
-        private async Task<ServiceCallResult<T>> Call<T>(string verb,
-            ApiMethod method,
-            string path,
-            string payload = null,
-            string querystring = null)
-        {
-//            Console.WriteLine($"[Thread:{Thread.CurrentThread.ManagedThreadId}] {path}");
-            var request = CreateRequest(verb, method, path, payload, querystring);
-
-            if (HasRateLimit)
-            {
-                if (method.Prioritized)
-                    rateGate.NotifyPriorityCallMade();
-                else
-                    rateGate?.WaitToProceed();
-            }
-            
-            WebResponse response = null;
-            var timer = Stopwatch.StartNew();
-            try
-            {
-                // response disposed in finally
-                response = await request.GetResponseAsync();
-                timer.Stop();
-                var result = Handle<T>(request.RequestUri, response, timer.ElapsedMilliseconds);
-                NotifyIfError(result);
-                return result;
-            }
-            catch (Exception ex)
-            {
-                timer.Stop();
-                // error logging happens in side the ServiceCallResult
-                var result = Handle<T>(ex, request.RequestUri, response, timer.ElapsedMilliseconds);
-                NotifyIfError(result);
-                return result;
-            }
-            finally
-            {
-                response?.Dispose();
-            }
-        }
-
-        protected virtual void NotifyErrorHandler<T>(ServiceCallResult<T> errorResult)
-        {
-            Debug.WriteLine(errorResult.Exception);
-        }
-
-        private void NotifyIfError<T>(ServiceCallResult<T> result)
-        {
-            try
-            {
-                if(result.WasSuccessful)
-                    return;
-                NotifyErrorHandler(result);
-            }
-            catch (Exception)
-            {
-                // ignored - never want NotifyError to throw its own error
-            }
-        }
-
-
-        private static ServiceCallResult<T> Handle<T>(Exception ex, Uri requestUri, WebResponse response, long elapsedMilliseconds)
-        {
-            return CallErrorResult<T>.Build(ex, requestUri, response, elapsedMilliseconds);
-        }
-
-        private static ServiceCallResult<T> Handle<T>(Uri requestUri, WebResponse response, long elapsedMilliseconds)
-        {
-            ServiceCallResult<T> result = null;
-            if (response.ContentType.StartsWith(ContentTypes.JSON, StringComparison.CurrentCultureIgnoreCase))
-            {
-                result = JsonCallResult<T>.Build(requestUri, response, elapsedMilliseconds);
-            }
-            if (response.ContentType.StartsWith(ContentTypes.TEXT, StringComparison.CurrentCultureIgnoreCase))
-            {
-                result = TextCallResult<T>.Build(requestUri, response, elapsedMilliseconds);
-            }
-
-            return result;
-        }
-
-        private HttpWebRequest CreateRequest(string verb, ApiMethod method, string path, string payload, string querystring)
-        {
-            var address = (method.IsPublic)
-                ? GetPublicRequestAddress(path, querystring)
-                : GetPrivateRequestAddress(path, querystring);
-
-            var request = (HttpWebRequest) WebRequest.Create(address);
-            request.Method = verb;
-            request.Timeout = method.TimeoutMS;
-
-            if (method.IsPublic)
-                SetPublicRequestProperties(request);
-            else
-                SetPrivateRequestProperties(request, path, payload, querystring);
-
-            // this adds a content body (POST only)
-            AddPayloadToBody(request, payload);
-            return request;
-        }
+        protected abstract void SetPrivateRequestProperties(HttpRequestMessage request, string method, object? rawPayload = null, string propsWithNonce = "");
         
 
 
-        /// <summary>
-        ///  Add the given payload to the body of the request
-        /// </summary>
-        protected void AddPayloadToBody(HttpWebRequest webRequest, string payload)
+        private void PassThroughRateGate<T>(ApiMethod<T> method) where T : class
         {
-            if (webRequest.Method == "GET" || payload == null)
+            if (!HasRateLimit) 
                 return;
 
-            using (var writer = new StreamWriter(webRequest.GetRequestStream()))
+            if (method.IsHighPriority)
+                rateGate.NotifyPriorityCallMade();
+            else
+                rateGate?.WaitToProceed();
+        }
+
+        /// <summary>
+        /// Implement a handler to do always do something (like log the error) when an error occurs.
+        /// Keep any action lightweight!
+        /// </summary>
+        /// <remarks>not actually logging here so this library does not require a ref to any logging libraries</remarks>
+        protected virtual void NotifyError(Exception? ex, string raw, HttpMethod method, string uri)
+        {
+            Debug.WriteLine($"{ApiId} {method.Method.ToUpper()}:{uri} {ex?.Message ?? ""} | {raw}");
+        }
+
+
+
+
+
+
+
+
+        public class PublicMethod<TResponse> : ApiMethod<TResponse> where TResponse : class
+        {
+
+            public PublicMethod(ApiBase api, HttpMethod httpMethod, MethodPriority priority)
+                : this(api, httpMethod, priority, MediaTypes.JSON)
             {
-                writer.Write(payload);
             }
 
+            public PublicMethod(ApiBase api, HttpMethod httpMethod, MethodPriority priority, MediaTypeHeaderValue contentType) 
+                : base(api, httpMethod, priority, contentType)
+            {
+            }
+
+
+            //        public static ApiMethod<TResponse> Get(MethodPriority priority, string contentType = ContentTypes.JSON) => new PublicMethod<TResponse>(HttpMethod.Get, priority, contentType);
+            //        public static ApiMethod<TResponse> Post(MethodPriority priority, string contentType = ContentTypes.JSON) => new PublicMethod<TResponse>(HttpMethod.Post, priority, contentType);
+
+            protected override HttpRequestMessage CreateRequest(string path, string querystring, string payload)
+            {
+                var uri = Api.GetPublicRequestUri(path, querystring);
+
+                var request = new HttpRequestMessage(HttpMethod, uri);
+                Api.SetPublicRequestProperties(request, path, payload, querystring);
+
+                // this adds a content body (POST only)
+                AddPayloadToBody(request, payload);
+                return request;
+            }
         }
+
+        public class PrivateMethod<TResponse> : ApiMethod<TResponse> where TResponse : class
+        {
+            public PrivateMethod(ApiBase api, HttpMethod httpMethod, MethodPriority priority, MediaTypeHeaderValue contentType)
+                : base(api, httpMethod, priority, contentType)
+            {
+            }
+
+            protected override HttpRequestMessage CreateRequest(string path, string querystring, string payload)
+            {
+                var uri = Api.GetPrivateRequestUri(path, querystring);
+
+                var request = new HttpRequestMessage(HttpMethod, uri);
+                Api.SetPrivateRequestProperties(request, path, payload, querystring);
+
+                // this adds a content body (POST only)
+                AddPayloadToBody(request, payload);
+                return request;
+            }
+        }
+
+        /// <summary>
+        /// Details about an API method. (only one per method should be instantiated)
+        /// </summary>
+        /// <remarks>Single instance to be created for each method.
+        /// Also allows simplification in the ApiBase, main intent is to help improve readability</remarks>
+        public abstract class ApiMethod<TResponse> where TResponse : class
+        {
+            /// <inheritdoc />
+            protected ApiMethod(ApiBase api, HttpMethod httpMethod, MethodPriority priority, MediaTypeHeaderValue contentType)
+            {
+                Api = api;
+                HttpMethod = httpMethod;
+                MethodContentType = contentType;
+                Priority = priority;
+            }
+
+
+            protected ApiBase Api;
+            public readonly HttpMethod HttpMethod;
+            public readonly MediaTypeHeaderValue MethodContentType;
+            
+
+            /// <summary>
+            /// High priority calls will not be stopped by the RateGate, they go straight through.
+            /// (note: The call still gets counted)
+            /// </summary>
+            public MethodPriority Priority { get; }
+
+
+            public bool IsHighPriority => Priority == MethodPriority.High;
+
+
+
+            public async Task<CallResult<TResponse>> Call(string path,
+                string payload = "",
+                string querystring = "",
+                CancellationToken cancellationToken = default)
+            {
+                //            Console.WriteLine($"[Thread:{Thread.CurrentThread.ManagedThreadId}] {path}");
+                var request = CreateRequest(path, payload, querystring);
+                Api.PassThroughRateGate(this);
+
+                
+
+
+                HttpResponseMessage? response = null;
+                var timer = Stopwatch.StartNew();
+                // two separate (nested) try catch blocks because want to distinguish between an ex occuring making the call
+                // and an ex occuring processing the response
+                try
+                {
+                    response = await Api.httpClient.SendAsync(request, cancellationToken);
+                    timer.Stop();
+
+                    var result = await CallResult<TResponse>.Wrap(request, response, timer.ElapsedMilliseconds);
+
+                    if (!result.WasSuccessful)
+                        Api.NotifyError(result.Exception, $"raw: {result.RawText}", HttpMethod, request.RequestUri.AbsoluteUri);
+                    return result;
+
+
+                }
+                catch (Exception ex)
+                {
+                    timer.Stop();
+                    var result = CallResult<TResponse>.BuildException(ex, request, timer.ElapsedMilliseconds);
+                    Api.NotifyError(ex, "", HttpMethod, request.RequestUri.AbsoluteUri);
+                    return result;
+                }
+                finally
+                {
+                    response?.Dispose();
+                }
+
+
+
+
+
+            }
+
+
+            protected abstract HttpRequestMessage CreateRequest(string path, string querystring, string payload);
+
+            /// <summary>
+            ///  Add the given payload to the body of the request
+            /// </summary>
+            protected void AddPayloadToBody(HttpRequestMessage request, string payload)
+            {
+                if (request.Method == HttpMethod.Get || string.IsNullOrWhiteSpace(payload))
+                    return;
+
+                request.Content = new StringContent(payload);
+                request.Content.Headers.ContentType = MethodContentType;
+            }
+
+
+
+        }
+
     }
 }
