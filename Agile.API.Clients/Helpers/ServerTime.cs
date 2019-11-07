@@ -11,12 +11,9 @@ namespace Agile.API.Clients.Helpers
             var currentTime = DateTime.Now;
             var dt = currentTime.ToUniversalTime();
             var unixEpoch = new DateTime(1970, 1, 1);
-            var unixTimeStamp = (Int32) (dt.Subtract(unixEpoch)).TotalSeconds;
+            var unixTimeStamp = (int) dt.Subtract(unixEpoch).TotalSeconds;
             // it's possible the nonce gets created >1 per second, but it MUST be greater each time, just add one
-            if (unixTimeStamp <= lastUnixTimeStamp)
-            {
-                unixTimeStamp = lastUnixTimeStamp + 1;
-            }
+            if (unixTimeStamp <= lastUnixTimeStamp) unixTimeStamp = lastUnixTimeStamp + 1;
             lastUnixTimeStamp = unixTimeStamp;
             return unixTimeStamp;
         }
@@ -26,6 +23,5 @@ namespace Agile.API.Clients.Helpers
             var unixEpoch = new DateTime(1970, 1, 1);
             return dt.Subtract(unixEpoch).TotalSeconds;
         }
-
     }
 }

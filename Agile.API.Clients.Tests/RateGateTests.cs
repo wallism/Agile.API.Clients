@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Agile.API.Clients;
 using Agile.API.Clients.CallHandling;
 using Agile.API.Clients.Tests.Mocks;
 using NUnit.Framework;

@@ -1,7 +1,6 @@
 using System.Threading.Tasks;
 using Agile.API.Clients.CallHandling;
 using PennedObjects.RateLimiting;
-using Newtonsoft.Json;
 using System.Net.Http;
 
 namespace Agile.API.Clients.Tests.Mocks

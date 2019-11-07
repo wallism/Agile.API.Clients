@@ -1,10 +1,8 @@
 ﻿using System;
 using System.Diagnostics;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Agile.API.Clients.CallHandling;
@@ -15,16 +13,19 @@ namespace Agile.API.Clients
 {
     public abstract class ApiBase
     {
+        private readonly HttpClient httpClient;
+        private readonly RateGate rateGate;
+
         protected ApiBase(string apiKey, RateLimit rateLimit, string apiSecret = "")
         {
             ApiKey = apiKey;
             ApiSecret = apiSecret;
 
             HasRateLimit = rateLimit.HasLimit;
-            rateGate = new RateGate(HasRateLimit 
-                ? rateLimit 
+            rateGate = new RateGate(HasRateLimit
+                ? rateLimit
                 : RateLimit.Build(9999, TimeSpan.FromMilliseconds(1)));
- 
+
 
             // one httpClient per api for now (may be better than one for all anyway)
             var handler = new HttpClientHandler
@@ -34,11 +35,26 @@ namespace Agile.API.Clients
             httpClient = new HttpClient(handler);
         }
 
+        protected string ApiKey { get; }
+
+        protected string ApiSecret { get; }
+
+        protected abstract string BaseUrl { get; }
+
+        /// <summary>
+        ///     Identifies which API it is (useful for logging)
+        /// </summary>
+        public abstract string ApiId { get; }
+
+
+        public bool HasRateLimit { get; }
+
 
         public ApiMethod<T> PublicGet<T>(MethodPriority priority) where T : class
         {
             return PublicGet<T>(priority, MediaTypes.JSON);
         }
+
         public ApiMethod<T> PublicGet<T>(MethodPriority priority, MediaTypeHeaderValue contentType) where T : class
         {
             return new PublicMethod<T>(this, HttpMethod.Get, priority, contentType);
@@ -49,6 +65,7 @@ namespace Agile.API.Clients
         {
             return PrivateGet<T>(priority, MediaTypes.JSON);
         }
+
         public ApiMethod<T> PrivateGet<T>(MethodPriority priority, MediaTypeHeaderValue contentType) where T : class
         {
             return new PrivateMethod<T>(this, HttpMethod.Get, priority, contentType);
@@ -59,27 +76,11 @@ namespace Agile.API.Clients
         {
             return PrivatePost<T>(priority, MediaTypes.JSON);
         }
+
         public ApiMethod<T> PrivatePost<T>(MethodPriority priority, MediaTypeHeaderValue contentType) where T : class
         {
             return new PrivateMethod<T>(this, HttpMethod.Post, priority, contentType);
         }
-
-        protected string ApiKey { get; }
-
-        protected string ApiSecret { get; }
-
-        protected abstract string BaseUrl { get; }
-
-        private readonly HttpClient httpClient;
-
-        /// <summary>
-        /// Identifies which API it is (useful for logging)
-        /// </summary>
-        public abstract string ApiId { get; }
-        
-
-        public bool HasRateLimit { get; }
-        private readonly RateGate rateGate;
 
 
         protected virtual long GetNonce()
@@ -107,12 +108,11 @@ namespace Agile.API.Clients
         }
 
         protected abstract void SetPrivateRequestProperties(HttpRequestMessage request, string method, object? rawPayload = null, string propsWithNonce = "");
-        
 
 
         private void PassThroughRateGate<T>(ApiMethod<T> method) where T : class
         {
-            if (!HasRateLimit) 
+            if (!HasRateLimit)
                 return;
 
             if (method.IsHighPriority)
@@ -122,8 +122,8 @@ namespace Agile.API.Clients
         }
 
         /// <summary>
-        /// Implement a handler to do always do something (like log the error) when an error occurs.
-        /// Keep any action lightweight!
+        ///     Implement a handler to do always do something (like log the error) when an error occurs.
+        ///     Keep any action lightweight!
         /// </summary>
         /// <remarks>not actually logging here so this library does not require a ref to any logging libraries</remarks>
         protected virtual void NotifyError(Exception? ex, string raw, HttpMethod method, string uri)
@@ -132,21 +132,14 @@ namespace Agile.API.Clients
         }
 
 
-
-
-
-
-
-
         public class PublicMethod<TResponse> : ApiMethod<TResponse> where TResponse : class
         {
-
             public PublicMethod(ApiBase api, HttpMethod httpMethod, MethodPriority priority)
                 : this(api, httpMethod, priority, MediaTypes.JSON)
             {
             }
 
-            public PublicMethod(ApiBase api, HttpMethod httpMethod, MethodPriority priority, MediaTypeHeaderValue contentType) 
+            public PublicMethod(ApiBase api, HttpMethod httpMethod, MethodPriority priority, MediaTypeHeaderValue contentType)
                 : base(api, httpMethod, priority, contentType)
             {
             }
@@ -189,12 +182,20 @@ namespace Agile.API.Clients
         }
 
         /// <summary>
-        /// Details about an API method. (only one per method should be instantiated)
+        ///     Details about an API method. (only one per method should be instantiated)
         /// </summary>
-        /// <remarks>Single instance to be created for each method.
-        /// Also allows simplification in the ApiBase, main intent is to help improve readability</remarks>
+        /// <remarks>
+        ///     Single instance to be created for each method.
+        ///     Also allows simplification in the ApiBase, main intent is to help improve readability
+        /// </remarks>
         public abstract class ApiMethod<TResponse> where TResponse : class
         {
+            public readonly HttpMethod HttpMethod;
+            public readonly MediaTypeHeaderValue MethodContentType;
+
+
+            protected ApiBase Api;
+
             /// <inheritdoc />
             protected ApiMethod(ApiBase api, HttpMethod httpMethod, MethodPriority priority, MediaTypeHeaderValue contentType)
             {
@@ -205,20 +206,14 @@ namespace Agile.API.Clients
             }
 
 
-            protected ApiBase Api;
-            public readonly HttpMethod HttpMethod;
-            public readonly MediaTypeHeaderValue MethodContentType;
-            
-
             /// <summary>
-            /// High priority calls will not be stopped by the RateGate, they go straight through.
-            /// (note: The call still gets counted)
+            ///     High priority calls will not be stopped by the RateGate, they go straight through.
+            ///     (note: The call still gets counted)
             /// </summary>
             public MethodPriority Priority { get; }
 
 
             public bool IsHighPriority => Priority == MethodPriority.High;
-
 
 
             public async Task<CallResult<TResponse>> Call(string path,
@@ -229,8 +224,6 @@ namespace Agile.API.Clients
                 //            Console.WriteLine($"[Thread:{Thread.CurrentThread.ManagedThreadId}] {path}");
                 var request = CreateRequest(path, payload, querystring);
                 Api.PassThroughRateGate(this);
-
-                
 
 
                 HttpResponseMessage? response = null;
@@ -247,8 +240,6 @@ namespace Agile.API.Clients
                     if (!result.WasSuccessful)
                         Api.NotifyError(result.Exception, $"raw: {result.RawText}", HttpMethod, request.RequestUri.AbsoluteUri);
                     return result;
-
-
                 }
                 catch (Exception ex)
                 {
@@ -261,18 +252,13 @@ namespace Agile.API.Clients
                 {
                     response?.Dispose();
                 }
-
-
-
-
-
             }
 
 
             protected abstract HttpRequestMessage CreateRequest(string path, string querystring, string payload);
 
             /// <summary>
-            ///  Add the given payload to the body of the request
+            ///     Add the given payload to the body of the request
             /// </summary>
             protected void AddPayloadToBody(HttpRequestMessage request, string payload)
             {
@@ -282,10 +268,6 @@ namespace Agile.API.Clients
                 request.Content = new StringContent(payload);
                 request.Content.Headers.ContentType = MethodContentType;
             }
-
-
-
         }
-
     }
 }

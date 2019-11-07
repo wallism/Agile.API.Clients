@@ -5,55 +5,45 @@ using System.Threading;
 namespace PennedObjects.RateLimiting
 {
     /// <summary>
-    /// Used to control the rate of some occurrence per unit of time.
+    ///     Used to control the rate of some occurrence per unit of time.
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///     To control the rate of an action using a <see cref="RateGate"/>, 
-    ///     code should simply call <see cref="WaitToProceed()"/> prior to 
-    ///     performing the action. <see cref="WaitToProceed()"/> will block
-    ///     the current thread until the action is allowed based on the rate 
-    ///     limit.
+    ///         To control the rate of an action using a <see cref="RateGate" />,
+    ///         code should simply call <see cref="WaitToProceed()" /> prior to
+    ///         performing the action. <see cref="WaitToProceed()" /> will block
+    ///         the current thread until the action is allowed based on the rate
+    ///         limit.
     ///     </para>
     ///     <para>
-    ///     This class is thread safe. A single <see cref="RateGate"/> instance 
-    ///     may be used to control the rate of an occurrence across multiple 
-    ///     threads.
+    ///         This class is thread safe. A single <see cref="RateGate" /> instance
+    ///         may be used to control the rate of an occurrence across multiple
+    ///         threads.
     ///     </para>
     /// </remarks>
     public class RateGate : IDisposable
     {
+        // Timer used to trigger exiting the semaphore.
+        private readonly Timer _exitTimer;
+
+        // Times (in millisecond ticks) at which the semaphore should be exited.
+        private readonly ConcurrentQueue<int> _exitTimes;
+
         // Semaphore used to count and limit the number of occurrences per
         // unit time.
         private readonly SemaphoreSlim _semaphore;
-        
-        // Times (in millisecond ticks) at which the semaphore should be exited.
-        private readonly ConcurrentQueue<int> _exitTimes;
-        
-        // Timer used to trigger exiting the semaphore.
-        private readonly Timer _exitTimer;
-        
+
         // Whether this instance is disposed.
         private bool _isDisposed;
 
         /// <summary>
-        /// Number of occurrences allowed per unit of time.
-        /// </summary>
-        public int Occurrences { get; private set; }
-        
-        /// <summary>
-        /// The length of the time unit, in milliseconds.
-        /// </summary>
-        public int TimeUnitMilliseconds { get; private set; }
-
-        /// <summary>
-        /// Initializes a <see cref="RateGate"/> with a rate of <paramref name="occurrences"/> 
-        /// per <paramref name="timeUnit"/>.
+        ///     Initializes a <see cref="RateGate" /> with a rate of <paramref name="occurrences" />
+        ///     per <paramref name="timeUnit" />.
         /// </summary>
         /// <param name="occurrences">Number of occurrences allowed per unit of time.</param>
         /// <param name="timeUnit">Length of the time unit.</param>
         /// <exception cref="ArgumentOutOfRangeException">
-        /// If <paramref name="occurrences"/> or <paramref name="timeUnit"/> is negative.
+        ///     If <paramref name="occurrences" /> or <paramref name="timeUnit" /> is negative.
         /// </exception>
         public RateGate(RateLimit rateLimit)
         {
@@ -62,12 +52,12 @@ namespace PennedObjects.RateLimiting
                 throw new ArgumentOutOfRangeException("occurrences", "Number of occurrences must be a positive integer");
             if (rateLimit.TimeUnit != rateLimit.TimeUnit.Duration())
                 throw new ArgumentOutOfRangeException("timeUnit", "Time unit must be a positive span of time");
-            if (rateLimit.TimeUnit >= TimeSpan.FromMilliseconds(UInt32.MaxValue))
+            if (rateLimit.TimeUnit >= TimeSpan.FromMilliseconds(uint.MaxValue))
                 throw new ArgumentOutOfRangeException("timeUnit", "Time unit must be less than 2^32 milliseconds");
 
             Occurrences = rateLimit.Occurrences;
-            TimeUnitMilliseconds = (int)rateLimit.TimeUnit.TotalMilliseconds;
-            
+            TimeUnitMilliseconds = (int) rateLimit.TimeUnit.TotalMilliseconds;
+
             // Create the semaphore, with the number of occurrences as the maximum count.
             _semaphore = new SemaphoreSlim(Occurrences, Occurrences);
 
@@ -79,6 +69,25 @@ namespace PennedObjects.RateLimiting
             _exitTimer = new Timer(ExitTimerCallback, null, TimeUnitMilliseconds, -1);
         }
 
+        /// <summary>
+        ///     Number of occurrences allowed per unit of time.
+        /// </summary>
+        public int Occurrences { get; }
+
+        /// <summary>
+        ///     The length of the time unit, in milliseconds.
+        /// </summary>
+        public int TimeUnitMilliseconds { get; }
+
+        /// <summary>
+        ///     Releases unmanaged resources held by an instance of this class.
+        /// </summary>
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
         // Callback for the exit timer that exits the semaphore based on exit times 
         // in the queue and then sets the timer for the nextexit time.
         private void ExitTimerCallback(object state)
@@ -87,7 +96,7 @@ namespace PennedObjects.RateLimiting
             // exit the semaphore and dequeue the exit time.
             int exitTime;
             while (_exitTimes.TryPeek(out exitTime)
-                    && unchecked(exitTime - Environment.TickCount) <= 0)
+                   && unchecked(exitTime - Environment.TickCount) <= 0)
             {
                 _semaphore.Release();
                 _exitTimes.TryDequeue(out exitTime);
@@ -108,8 +117,8 @@ namespace PennedObjects.RateLimiting
         }
 
         /// <summary>
-        /// Priority calls do not wait, calling this method ensures that they
-        /// do get counted.
+        ///     Priority calls do not wait, calling this method ensures that they
+        ///     do get counted.
         /// </summary>
         public void NotifyPriorityCallMade()
         {
@@ -117,8 +126,8 @@ namespace PennedObjects.RateLimiting
         }
 
         /// <summary>
-        /// Blocks the current thread until allowed to proceed or until the
-        /// specified timeout elapses.
+        ///     Blocks the current thread until allowed to proceed or until the
+        ///     specified timeout elapses.
         /// </summary>
         /// <param name="millisecondsTimeout">Number of milliseconds to wait, or -1 to wait indefinitely.</param>
         /// <returns>true if the thread is allowed to proceed, or false if timed out</returns>
@@ -145,18 +154,18 @@ namespace PennedObjects.RateLimiting
         }
 
         /// <summary>
-        /// Blocks the current thread until allowed to proceed or until the
-        /// specified timeout elapses.
+        ///     Blocks the current thread until allowed to proceed or until the
+        ///     specified timeout elapses.
         /// </summary>
         /// <param name="timeout"></param>
         /// <returns>true if the thread is allowed to proceed, or false if timed out</returns>
         public bool WaitToProceed(TimeSpan timeout)
         {
-            return WaitToProceed((int)timeout.TotalMilliseconds);
+            return WaitToProceed((int) timeout.TotalMilliseconds);
         }
 
         /// <summary>
-        /// Blocks the current thread indefinitely until allowed to proceed.
+        ///     Blocks the current thread indefinitely until allowed to proceed.
         /// </summary>
         public void WaitToProceed()
         {
@@ -169,24 +178,14 @@ namespace PennedObjects.RateLimiting
             if (_isDisposed)
                 throw new ObjectDisposedException("RateGate is already disposed");
         }
-        
-        /// <summary>
-        /// Releases unmanaged resources held by an instance of this class.
-        /// </summary>
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
 
         /// <summary>
-        /// Releases unmanaged resources held by an instance of this class.
+        ///     Releases unmanaged resources held by an instance of this class.
         /// </summary>
         /// <param name="isDisposing">Whether this object is being disposed.</param>
         protected virtual void Dispose(bool isDisposing)
         {
             if (!_isDisposed)
-            {
                 if (isDisposing)
                 {
                     // The semaphore and timer both implement IDisposable and 
@@ -196,7 +195,6 @@ namespace PennedObjects.RateLimiting
 
                     _isDisposed = true;
                 }
-            }
         }
     }
 }

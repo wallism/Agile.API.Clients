@@ -8,8 +8,6 @@ namespace Agile.API.Clients.CallHandling
 {
     public static class CallSerialization
     {
-
-
         private static JsonSerializer Serializer { get; } = new JsonSerializer();
 
 
@@ -37,8 +35,6 @@ namespace Agile.API.Clients.CallHandling
                 Console.WriteLine(ex);
                 return "error deserializing";
             }
-
         }
-
     }
 }
