@@ -107,7 +107,10 @@ namespace Agile.API.Clients
         {
         }
 
-        protected abstract void SetPrivateRequestProperties(HttpRequestMessage request, string method, object? rawPayload = null, string propsWithNonce = "");
+        protected virtual void SetPrivateRequestProperties(HttpRequestMessage request, string method, object? rawPayload = null, string propsWithNonce = "")
+        {
+            throw new NotImplementedException("Required if calling private methods on the API");
+        }
 
 
         private void PassThroughRateGate<T>(ApiMethod<T> method) where T : class
