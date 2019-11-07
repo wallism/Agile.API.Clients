@@ -129,9 +129,9 @@ namespace Agile.API.Clients
         ///     Keep any action lightweight!
         /// </summary>
         /// <remarks>not actually logging here so this library does not require a ref to any logging libraries</remarks>
-        protected virtual void NotifyError(Exception? ex, string raw, HttpMethod method, string uri)
+        protected virtual void NotifyError<T>(CallResult<T> result) where T : class
         {
-            Debug.WriteLine($"{ApiId} {method.Method.ToUpper()}:{uri} {ex?.Message ?? ""} | {raw}");
+            Debug.WriteLine($"{ApiId} {result.StatusCode}:{result.AbsoluteUri} {result.Exception?.Message ?? "no ex message"} | {result.RawText}");
         }
 
 
@@ -241,14 +241,14 @@ namespace Agile.API.Clients
                     var result = await CallResult<TResponse>.Wrap(request, response, timer.ElapsedMilliseconds);
 
                     if (!result.WasSuccessful)
-                        Api.NotifyError(result.Exception, $"raw: {result.RawText}", HttpMethod, request.RequestUri.AbsoluteUri);
+                        Api.NotifyError(result);
                     return result;
                 }
                 catch (Exception ex)
                 {
                     timer.Stop();
                     var result = CallResult<TResponse>.BuildException(ex, request, timer.ElapsedMilliseconds);
-                    Api.NotifyError(ex, "", HttpMethod, request.RequestUri.AbsoluteUri);
+                    Api.NotifyError(result);
                     return result;
                 }
                 finally
