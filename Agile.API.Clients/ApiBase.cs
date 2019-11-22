@@ -28,6 +28,7 @@ namespace Agile.API.Clients
 
 
             // one httpClient per api for now (may be better than one for all anyway)
+            // TODO consider IHttpClientFactory
             var handler = new HttpClientHandler
             {
                 AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
@@ -225,7 +226,7 @@ namespace Agile.API.Clients
                 CancellationToken cancellationToken = default)
             {
                 //            Console.WriteLine($"[Thread:{Thread.CurrentThread.ManagedThreadId}] {path}");
-                var request = CreateRequest(path, payload, querystring);
+                var request = CreateRequest(path, querystring, payload);
                 Api.PassThroughRateGate(this);
 
 
