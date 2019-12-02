@@ -128,7 +128,7 @@ namespace Agile.API.Clients.CallHandling
                 }
 
                 // Success status code
-                if (response.Content.Headers.ContentType.Equals(MediaTypes.JSON))
+                if (response.Content.Headers.ContentType.MediaType.Equals(MediaTypes.JSON.MediaType))
                     try
                     {
                         var value = await CallSerialization.DeserializeJsonResponse<T>(response);
@@ -142,7 +142,7 @@ namespace Agile.API.Clients.CallHandling
                     }
 
 
-                if (response.Content.Headers.ContentType.Equals(MediaTypes.TEXT))
+                if (response.Content.Headers.ContentType.MediaType.Equals(MediaTypes.TEXT.MediaType))
                 {
                     var value = await CallSerialization.ResponseAsString(response);
                     return new CallResult<T>(value, request, response, elapsedMilliseconds);
