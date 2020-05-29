@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Agile.API.Clients;
 using Agile.API.Clients.CallHandling;
 using Agile.API.Clients.Tests.Mocks;
 using NUnit.Framework;
@@ -24,7 +25,7 @@ namespace Agile.API.Client.Tests
 
         private WidgetApi GetMockApi(RateLimit rateLimit)
         {
-            return new WidgetApi("KEY", "SECRET", rateLimit);
+            return new WidgetApi(new AuthOptions{ ApiKey = "KEY", ApiSecret = "SECRET"}, rateLimit);
         }
 
         [Test]

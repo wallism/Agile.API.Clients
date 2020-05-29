@@ -16,10 +16,10 @@ namespace Agile.API.Clients
         private readonly HttpClient httpClient;
         private readonly RateGate rateGate;
 
-        protected ApiBase(string apiKey, RateLimit rateLimit, string apiSecret = "")
+        protected ApiBase(AuthOptions auth, RateLimit rateLimit)
         {
-            ApiKey = apiKey;
-            ApiSecret = apiSecret;
+            ApiKey = auth.ApiKey;
+            ApiSecret = auth.ApiSecret;
 
             HasRateLimit = rateLimit.HasLimit;
             rateGate = new RateGate(HasRateLimit
@@ -34,6 +34,8 @@ namespace Agile.API.Clients
                 AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
             };
             httpClient = new HttpClient(handler);
+            if (string.IsNullOrWhiteSpace(auth.OAuthToken))
+                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.OAuthToken);
         }
 
         protected string ApiKey { get; }

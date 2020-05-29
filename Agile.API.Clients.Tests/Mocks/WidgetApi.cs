@@ -7,8 +7,8 @@ namespace Agile.API.Clients.Tests.Mocks
 {
     public class WidgetApi : ApiBase
     {
-        public WidgetApi(string apiKey, string apiSecret = null, RateLimit rateLimit = null) 
-            : base(apiKey, rateLimit, apiSecret)
+        public WidgetApi(AuthOptions auth, RateLimit rateLimit = null) 
+            : base(auth, rateLimit)
         {
             get = PublicGet<Widget>(MethodPriority.Normal);
             post = PrivatePost<Widget>(MethodPriority.Normal);
