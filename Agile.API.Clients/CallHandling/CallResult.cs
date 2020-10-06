@@ -123,8 +123,8 @@ namespace Agile.API.Clients.CallHandling
 
                     // todo: is there an error T defined? if yes, use that, otherwise just the string
 
-                    var raw = await CallSerialization.ResponseAsString(response);
-                    return new CallResult<T>(new Exception($"status code = {response.StatusCode}"), raw, request, response, elapsedMilliseconds);
+                    var raw = await CallSerialization.ResponseAsString(response) ?? "";
+                    return new CallResult<T>(new Exception($"StatusCode = {response.StatusCode} {raw}"), raw, request, response, elapsedMilliseconds);
                 }
 
                 // Success status code
