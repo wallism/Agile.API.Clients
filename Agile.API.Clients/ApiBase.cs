@@ -16,12 +16,20 @@ namespace Agile.API.Clients
     public abstract class ApiBase
     {
         protected IConfiguration Configuration { get; }
-
+        
         protected ApiBase(IConfiguration configuration)
         {
             Configuration = configuration;
-            RateGate = new RateGate(RateLimit.Build(int.Parse(configuration[$"APIS:{ApiId}:RateLimit:Occurrences"]),
-                TimeSpan.FromSeconds(int.Parse(configuration[$"APIS:{ApiId}:RateLimit:Seconds"]))));
+            var occurrences = configuration[$"APIS:{ApiId}:RateLimit:Occurrences"];
+            if (string.IsNullOrEmpty(occurrences))
+                occurrences = "10";
+            var seconds = configuration[$"APIS:{ApiId}:RateLimit:Seconds"];
+            if (string.IsNullOrEmpty(seconds))
+                seconds = "1";
+
+
+            RateGate = new RateGate(RateLimit.Build(int.Parse(occurrences),
+                TimeSpan.FromSeconds(int.Parse(seconds))));
 
             // one httpClient per api (better than one for all anyway)
             // TODO consider IHttpClientFactory
@@ -52,9 +60,6 @@ namespace Agile.API.Clients
         ///     Identifies which API it is (useful for logging)
         /// </summary>
         public abstract string ApiId { get; }
-
-
-        public bool HasRateLimit { get; private set; }
 
 
         public ApiMethod<T> PublicGet<T>(MethodPriority priority) where T : class
@@ -112,6 +117,15 @@ namespace Agile.API.Clients
 
         protected virtual async Task SetPublicRequestProperties(HttpRequestMessage request, string method, object? rawPayload = null, string propsWithNonce = "")
         {
+            try
+            {
+                request.Headers.Host = request.RequestUri.Host;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+                throw;
+            }
         }
 
         protected virtual async Task SetPrivateRequestProperties(HttpRequestMessage request, string method, object? rawPayload = null, string propsWithNonce = "")
@@ -122,9 +136,6 @@ namespace Agile.API.Clients
 
         private void PassThroughRateGate<T>(ApiMethod<T> method) where T : class
         {
-            if (!HasRateLimit)
-                return;
-
             if (method.IsHighPriority)
                 RateGate.NotifyPriorityCallMade();
             else

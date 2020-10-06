@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading;
 
 namespace PennedObjects.RateLimiting
@@ -58,6 +59,7 @@ namespace PennedObjects.RateLimiting
             Occurrences = rateLimit.Occurrences;
             TimeUnitMilliseconds = (int) rateLimit.TimeUnit.TotalMilliseconds;
 
+            Debug.WriteLine($"{Occurrences}/{TimeUnitMilliseconds}");
             // Create the semaphore, with the number of occurrences as the maximum count.
             _semaphore = new SemaphoreSlim(Occurrences, Occurrences);
 

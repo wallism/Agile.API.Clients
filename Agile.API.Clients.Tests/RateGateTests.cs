@@ -25,59 +25,62 @@ namespace Agile.API.Client.Tests
         {
         }
 
-        private WidgetApi GetMockApi(RateLimit rateLimit)
-        {
-            return new WidgetApi(Substitute.For<IConfiguration>());
-        }
-
         [Test]
         public async Task CallReturns_404_ErrorResult()
         {
             // get api with Rate limit of 3/second
-            var api = GetMockApi(RateLimit.Build(3, TimeSpan.FromMilliseconds(1000)));
-
+            var config = Substitute.For<IConfiguration>();
+            config["APIS:MOCK:RateLimit:Occurrences"].Returns(info => "3");
+            config["APIS:MOCK:RateLimit:Seconds"].Returns(info => "1");
+            var api = new WidgetApi(config);
+            
             var result = await api.GetWidget(1);
             Assert.IsTrue(result is CallResult<Widget>);
             Assert.IsFalse(result.WasSuccessful);
         }
 
         [Test]
-        public async Task RateLimitOf_2PerSecond_FifthCallOccursAfter_2Seconds()
+        public async Task RateLimitOf_1Per_Seconds_ThirdCallOccursAfter_15_Seconds()
         {
-            // get api with Rate limit of 2/second
-            var api = GetMockApi(RateLimit.Build(2, TimeSpan.FromMilliseconds(1000)));
+            // get api with Rate limit of 1/second
+            var config = Substitute.For<IConfiguration>();
+            config["APIS:MOCK:RateLimit:Occurrences"].Returns(info => "1");
+            config["APIS:MOCK:RateLimit:Seconds"].Returns(info => "1");
+            var api = new WidgetApi(config);
 
             var timer = Stopwatch.StartNew();
             // TODO also test running all on different threads
             Console.WriteLine($"0 {timer.ElapsedMilliseconds} - started");
-            var result1 = await api.GetWidget(1);
+            await api.GetWidget(1);
             Console.WriteLine($"1 {timer.ElapsedMilliseconds}");
-            var result2 = await api.GetWidget(2);
+            await api.GetWidget(2);
             Console.WriteLine($"2 {timer.ElapsedMilliseconds}");
-            var result3 = await api.GetWidget(3);
+
+
+            await api.GetWidget(3);
             Console.WriteLine($"3 {timer.ElapsedMilliseconds}");
-            var result4 = await api.GetWidget(4);
-
-            Assert.IsTrue(timer.ElapsedMilliseconds < 2000);
+            Assert.Greater(timer.ElapsedMilliseconds, 2000);
+            await api.GetWidget(4);
             Console.WriteLine($"4 {timer.ElapsedMilliseconds}");
-            var result5 = await api.GetWidget(5);
-            Assert.IsTrue(timer.ElapsedMilliseconds > 2000);
+            Assert.Greater(timer.ElapsedMilliseconds, 3000);
 
+
+            await api.GetWidget(5);
             Console.WriteLine($"5 {timer.ElapsedMilliseconds}");
-            var result6 = await api.GetWidget(6);
+            await api.GetWidget(6);
             Console.WriteLine($"6 {timer.ElapsedMilliseconds}");
-            var result7 = await api.GetWidget(7);
+            await api.GetWidget(7);
             Console.WriteLine($"7 {timer.ElapsedMilliseconds}");
-
-            var result8 = await api.GetWidget(8);
-            Console.WriteLine($"8 {timer.ElapsedMilliseconds}");
         }
 
         [Test]
         public async Task MultiThreadTest()
         {
-            _widgetApi = GetMockApi(RateLimit.Build(2, TimeSpan.FromMilliseconds(1000)));
-            
+            var config = Substitute.For<IConfiguration>();
+            config["APIS:MOCK:RateLimit:Occurrences"].Returns(info => "2");
+            config["APIS:MOCK:RateLimit:Seconds"].Returns(info => "1");
+            _widgetApi = new WidgetApi(config);
+
             var timer = Stopwatch.StartNew();
             Console.WriteLine($"[Thread:{Thread.CurrentThread.ManagedThreadId}] 0 {timer.ElapsedMilliseconds} - started");
 

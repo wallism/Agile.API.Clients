@@ -17,7 +17,7 @@ namespace Agile.API.Clients.Tests.Mocks
         }
 
 
-        protected override string BaseUrl => "http://localhost";
+        protected override string BaseUrl => "http://mytestdomaindoesnotexist.com"; // don't use locahost
         public override string ApiId => "MOCK";
 
 
