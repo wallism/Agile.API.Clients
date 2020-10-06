@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using Agile.API.Clients;
 using Agile.API.Clients.CallHandling;
 using Agile.API.Clients.Tests.Mocks;
+using Microsoft.Extensions.Configuration;
+using NSubstitute;
 using NUnit.Framework;
 using PennedObjects.RateLimiting;
 
@@ -25,7 +27,7 @@ namespace Agile.API.Client.Tests
 
         private WidgetApi GetMockApi(RateLimit rateLimit)
         {
-            return new WidgetApi(new AuthOptions{ ApiKey = "KEY", ApiSecret = "SECRET"}, rateLimit);
+            return new WidgetApi(Substitute.For<IConfiguration>());
         }
 
         [Test]

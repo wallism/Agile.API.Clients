@@ -1,14 +1,14 @@
+using System;
 using System.Threading.Tasks;
 using Agile.API.Clients.CallHandling;
-using PennedObjects.RateLimiting;
 using System.Net.Http;
+using Microsoft.Extensions.Configuration;
 
 namespace Agile.API.Clients.Tests.Mocks
 {
     public class WidgetApi : ApiBase
     {
-        public WidgetApi(AuthOptions auth, RateLimit rateLimit = null) 
-            : base(auth, rateLimit)
+        public WidgetApi(IConfiguration config) : base(config)
         {
             get = PublicGet<Widget>(MethodPriority.Normal);
             post = PrivatePost<Widget>(MethodPriority.Normal);
@@ -27,7 +27,7 @@ namespace Agile.API.Clients.Tests.Mocks
 
         public async Task<CallResult<Widget>> GetWidget(long widgetId)
         {
-            return await get.Call($"widget/{widgetId}");
+            return await get.Call($"widget/{widgetId}", string.Empty);
         }
 
         public async Task<CallResult<Widget>> GetWidget(Widget widget)
@@ -37,9 +37,9 @@ namespace Agile.API.Clients.Tests.Mocks
         }
 
 
-        protected override void SetPrivateRequestProperties(HttpRequestMessage request, string method, object rawPayload = null, string propsWithNonce = null)
+        protected override Task SetPrivateRequestProperties(HttpRequestMessage request, string method, object rawPayload = null, string propsWithNonce = null)
         {
-            // add authentication headers etc
+            throw new NotImplementedException("Required if calling private methods on the API");
         }
 
 

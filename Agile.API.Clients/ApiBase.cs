@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
@@ -7,40 +8,43 @@ using System.Threading;
 using System.Threading.Tasks;
 using Agile.API.Clients.CallHandling;
 using Agile.API.Clients.Helpers;
+using Microsoft.Extensions.Configuration;
 using PennedObjects.RateLimiting;
 
 namespace Agile.API.Clients
 {
     public abstract class ApiBase
     {
-        private readonly HttpClient httpClient;
-        private readonly RateGate rateGate;
+        protected IConfiguration Configuration { get; }
 
-        protected ApiBase(AuthOptions auth, RateLimit rateLimit)
+        protected ApiBase(IConfiguration configuration)
         {
-            ApiKey = auth.ApiKey;
-            ApiSecret = auth.ApiSecret;
+            Configuration = configuration;
+            RateGate = new RateGate(RateLimit.Build(int.Parse(configuration[$"APIS:{ApiId}:RateLimit:Occurrences"]),
+                TimeSpan.FromSeconds(int.Parse(configuration[$"APIS:{ApiId}:RateLimit:Seconds"]))));
 
-            HasRateLimit = rateLimit.HasLimit;
-            rateGate = new RateGate(HasRateLimit
-                ? rateLimit
-                : RateLimit.Build(9999, TimeSpan.FromMilliseconds(1)));
-
-
-            // one httpClient per api for now (may be better than one for all anyway)
+            // one httpClient per api (better than one for all anyway)
             // TODO consider IHttpClientFactory
             var handler = new HttpClientHandler
             {
                 AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
             };
-            httpClient = new HttpClient(handler);
-            if (string.IsNullOrWhiteSpace(auth.OAuthToken))
-                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.OAuthToken);
+
+            HttpClient = new HttpClient(handler);
         }
 
-        protected string ApiKey { get; }
 
-        protected string ApiSecret { get; }
+        protected void SetAuthorizationHeader(AuthenticationHeaderValue header)
+        {
+            HttpClient.DefaultRequestHeaders.Authorization = header;
+        }
+
+        private HttpClient HttpClient { get; set; }
+        private RateGate RateGate { get; set; }
+
+        protected string ApiKey { get; private set; }
+
+        protected string ApiSecret { get; private set; }
 
         protected abstract string BaseUrl { get; }
 
@@ -50,7 +54,7 @@ namespace Agile.API.Clients
         public abstract string ApiId { get; }
 
 
-        public bool HasRateLimit { get; }
+        public bool HasRateLimit { get; private set; }
 
 
         public ApiMethod<T> PublicGet<T>(MethodPriority priority) where T : class
@@ -106,11 +110,11 @@ namespace Agile.API.Clients
         }
 
 
-        protected virtual void SetPublicRequestProperties(HttpRequestMessage request, string method, object? rawPayload = null, string propsWithNonce = "")
+        protected virtual async Task SetPublicRequestProperties(HttpRequestMessage request, string method, object? rawPayload = null, string propsWithNonce = "")
         {
         }
 
-        protected virtual void SetPrivateRequestProperties(HttpRequestMessage request, string method, object? rawPayload = null, string propsWithNonce = "")
+        protected virtual async Task SetPrivateRequestProperties(HttpRequestMessage request, string method, object? rawPayload = null, string propsWithNonce = "")
         {
             throw new NotImplementedException("Required if calling private methods on the API");
         }
@@ -122,9 +126,9 @@ namespace Agile.API.Clients
                 return;
 
             if (method.IsHighPriority)
-                rateGate.NotifyPriorityCallMade();
+                RateGate.NotifyPriorityCallMade();
             else
-                rateGate?.WaitToProceed();
+                RateGate?.WaitToProceed();
         }
 
         /// <summary>
@@ -134,7 +138,8 @@ namespace Agile.API.Clients
         /// <remarks>not actually logging here so this library does not require a ref to any logging libraries</remarks>
         protected virtual void NotifyError<T>(CallResult<T> result) where T : class
         {
-            Debug.WriteLine($"{ApiId} {result.StatusCode}:{result.AbsoluteUri} {result.Exception?.Message ?? "no ex message"} | {result.RawText}");
+            var message = $"{ApiId} {result.StatusCode}:{result.AbsoluteUri} {result.Exception?.Message ?? "no ex message"} | {result.RawText}";
+            Debug.WriteLine(message);
         }
 
 
@@ -154,12 +159,12 @@ namespace Agile.API.Clients
             //        public static ApiMethod<TResponse> Get(MethodPriority priority, string contentType = ContentTypes.JSON) => new PublicMethod<TResponse>(HttpMethod.Get, priority, contentType);
             //        public static ApiMethod<TResponse> Post(MethodPriority priority, string contentType = ContentTypes.JSON) => new PublicMethod<TResponse>(HttpMethod.Post, priority, contentType);
 
-            protected override HttpRequestMessage CreateRequest(string path, string querystring, string payload)
+            protected override async Task<HttpRequestMessage> CreateRequest<T>(string path, string querystring, T payload)
             {
                 var uri = Api.GetPublicRequestUri(path, querystring);
 
                 var request = new HttpRequestMessage(HttpMethod, uri);
-                Api.SetPublicRequestProperties(request, path, payload, querystring);
+                await Api.SetPublicRequestProperties(request, path, payload, querystring);
 
                 // this adds a content body (POST only)
                 AddPayloadToBody(request, payload);
@@ -174,12 +179,12 @@ namespace Agile.API.Clients
             {
             }
 
-            protected override HttpRequestMessage CreateRequest(string path, string querystring, string payload)
+            protected override async Task<HttpRequestMessage> CreateRequest<T>(string path, string querystring, T payload)
             {
                 var uri = Api.GetPrivateRequestUri(path, querystring);
 
                 var request = new HttpRequestMessage(HttpMethod, uri);
-                Api.SetPrivateRequestProperties(request, path, payload, querystring);
+                await Api.SetPrivateRequestProperties(request, path, payload, querystring);
 
                 // this adds a content body (POST only)
                 AddPayloadToBody(request, payload);
@@ -222,15 +227,14 @@ namespace Agile.API.Clients
             public bool IsHighPriority => Priority == MethodPriority.High;
 
 
-            public async Task<CallResult<TResponse>> Call(string path,
-                string payload = "",
+            public async Task<CallResult<TResponse>> Call<T>(string path,
+                T payload,
                 string querystring = "",
                 CancellationToken cancellationToken = default)
             {
                 //            Console.WriteLine($"[Thread:{Thread.CurrentThread.ManagedThreadId}] {path}");
-                var request = CreateRequest(path, querystring, payload);
+                var request = await CreateRequest(path, querystring, payload);
                 Api.PassThroughRateGate(this);
-
 
                 HttpResponseMessage? response = null;
                 var timer = Stopwatch.StartNew();
@@ -238,7 +242,7 @@ namespace Agile.API.Clients
                 // and an ex occuring processing the response
                 try
                 {
-                    response = await Api.httpClient.SendAsync(request, cancellationToken);
+                    response = await Api.HttpClient.SendAsync(request, cancellationToken);
                     timer.Stop();
 
                     var result = await CallResult<TResponse>.Wrap(request, response, timer.ElapsedMilliseconds);
@@ -261,17 +265,26 @@ namespace Agile.API.Clients
             }
 
 
-            protected abstract HttpRequestMessage CreateRequest(string path, string querystring, string payload);
+            protected abstract Task<HttpRequestMessage> CreateRequest<T>(string path, string querystring, T payload);
 
             /// <summary>
             ///     Add the given payload to the body of the request
             /// </summary>
-            protected void AddPayloadToBody(HttpRequestMessage request, string payload)
+            protected void AddPayloadToBody<T>(HttpRequestMessage request, T payload)
             {
-                if (request.Method == HttpMethod.Get || string.IsNullOrWhiteSpace(payload))
+                if (request.Method == HttpMethod.Get || payload == null)
                     return;
 
-                request.Content = new StringContent(payload);
+                if (Equals(MethodContentType, MediaTypes.FormUrlEncoded))
+                {
+                    var formData = (IEnumerable<KeyValuePair<string, string>>)payload;
+                    request.Content = new FormUrlEncodedContent(formData);
+                }
+                else
+                {
+                    request.Content = new StringContent(payload as string);
+                }
+
                 request.Content.Headers.ContentType = MethodContentType;
             }
         }
