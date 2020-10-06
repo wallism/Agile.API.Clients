@@ -56,6 +56,12 @@ namespace Agile.API.Clients.CallHandling
             Exception = ex;
             RawText = raw;
         }
+        private CallResult(Exception ex, string raw)
+        {
+            AbsoluteUri = "nocallmade";
+            Exception = ex;
+            RawText = raw;
+        }
 
         public string AbsoluteUri { get; set; }
 
@@ -111,6 +117,11 @@ namespace Agile.API.Clients.CallHandling
         public static CallResult<T> BuildException(Exception ex, HttpRequestMessage request, long elapsedMilliseconds)
         {
             return new CallResult<T>(ex, "no response", request, null, elapsedMilliseconds);
+        }
+
+        public static CallResult<T> BuildException(Exception ex, string raw)
+        {
+            return new CallResult<T>(ex, raw);
         }
 
         public static async Task<CallResult<T>> Wrap(HttpRequestMessage request, HttpResponseMessage response, long elapsedMilliseconds)
