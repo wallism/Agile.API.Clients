@@ -138,6 +138,12 @@ namespace Agile.API.Clients.CallHandling
                     return new CallResult<T>(new Exception($"StatusCode = {response.StatusCode} {raw}"), raw, request, response, elapsedMilliseconds);
                 }
 
+                if (response.Content.Headers.ContentType == null)
+                {
+                    // some responses don't have a ContentType. The call was successful though
+                    return new CallResult<T>((T)null, request, response, elapsedMilliseconds);
+                }
+
                 // Success status code
                 if (response.Content.Headers.ContentType.MediaType.Equals(MediaTypes.JSON.MediaType))
                     try
