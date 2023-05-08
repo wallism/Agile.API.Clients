@@ -20,16 +20,13 @@ namespace Agile.API.Clients
         protected ApiBase(IConfiguration configuration)
         {
             Configuration = configuration;
-            var occurrences = configuration[$"APIS:{ApiId}:RateLimit:Occurrences"];
-            if (string.IsNullOrEmpty(occurrences))
-                occurrences = "10";
-            var seconds = configuration[$"APIS:{ApiId}:RateLimit:Seconds"];
-            if (string.IsNullOrEmpty(seconds))
-                seconds = "1";
+            RateGateOccurrences = configuration[$"APIS:{ApiId}:RateLimit:Occurrences"] ?? "10";
+            RateGateSeconds = configuration[$"APIS:{ApiId}:RateLimit:Seconds"] ?? "1";
 
+            RateGate = new RateGate(RateLimit.Build(int.Parse(RateGateOccurrences),
+                TimeSpan.FromSeconds(int.Parse(RateGateSeconds))));
 
-            RateGate = new RateGate(RateLimit.Build(int.Parse(occurrences),
-                TimeSpan.FromSeconds(int.Parse(seconds))));
+            HasRateLimit = true; // force on by default, may be overwritten in inheritors
 
             // one httpClient per api (better than one for all anyway)
             // TODO consider IHttpClientFactory
@@ -47,6 +44,9 @@ namespace Agile.API.Clients
             HttpClient.DefaultRequestHeaders.Authorization = header;
         }
 
+        public bool HasRateLimit { get; protected set; }
+        protected string RateGateOccurrences { get; set; }
+        protected string RateGateSeconds { get; set; }
         private HttpClient HttpClient { get; set; }
         private RateGate RateGate { get; set; }
 
@@ -94,6 +94,10 @@ namespace Agile.API.Clients
             return new PrivateMethod<T>(this, HttpMethod.Post, priority, contentType);
         }
 
+        public ApiMethod<T> PrivateDelete<T>(MethodPriority priority) where T : class
+        {
+            return new PrivateMethod<T>(this, HttpMethod.Delete, priority, MediaTypes.JSON);
+        }
 
         protected virtual long GetNonce()
         {
