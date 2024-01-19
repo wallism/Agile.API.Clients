@@ -2,8 +2,10 @@
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security;
 using System.Threading.Tasks;
 using Agile.API.Clients.Helpers;
+using Newtonsoft.Json;
 
 namespace Agile.API.Clients.CallHandling
 {
@@ -38,16 +40,17 @@ namespace Agile.API.Clients.CallHandling
         }
 
 
-        private CallResult(T value, HttpRequestMessage request, HttpResponseMessage response, long elapsedMilliseconds)
+        private CallResult(T value, string responseString, HttpRequestMessage request, HttpResponseMessage response, long elapsedMilliseconds)
             : this(response, request, elapsedMilliseconds)
         {
+            RawText = responseString;
             Value = value;
         }
 
         private CallResult(string value, HttpRequestMessage request, HttpResponseMessage response, long elapsedMilliseconds)
             : this(response, request, elapsedMilliseconds)
         {
-            StringValue = value;
+            RawText = StringValue = value;
         }
 
         private CallResult(Exception ex, string raw, HttpRequestMessage request, HttpResponseMessage? response, long elapsedMilliseconds)
@@ -126,54 +129,60 @@ namespace Agile.API.Clients.CallHandling
 
         public static async Task<CallResult<T>> Wrap(HttpRequestMessage request, HttpResponseMessage response, long elapsedMilliseconds)
         {
+            if (!response.IsSuccessStatusCode)
+            {
+                // response received but the call failed, expected response type unlikely to be in the response
+
+                // todo: is there an error T defined? if yes, use that, otherwise just the string
+
+                var raw = await CallSerialization.ResponseAsString(response) ?? "";
+                return new CallResult<T>(new Exception($"StatusCode = {response.StatusCode} {raw}"), raw, request, response, elapsedMilliseconds);
+            }
+
+            var responseString = await CallSerialization.ResponseAsString(response);
+
             try
             {
-                if (!response.IsSuccessStatusCode)
-                {
-                    // response received but the call failed, expected response type unlikely to be in the response
-
-                    // todo: is there an error T defined? if yes, use that, otherwise just the string
-
-                    var raw = await CallSerialization.ResponseAsString(response) ?? "";
-                    return new CallResult<T>(new Exception($"StatusCode = {response.StatusCode} {raw}"), raw, request, response, elapsedMilliseconds);
-                }
 
                 if (response.Content.Headers.ContentType == null)
                 {
                     // some responses don't have a ContentType. The call was successful though
-                    return new CallResult<T>((T)null, request, response, elapsedMilliseconds);
+                    return new CallResult<T>((T)null, responseString, request, response, elapsedMilliseconds);
                 }
 
                 // Success status code
                 if (response.Content.Headers.ContentType.MediaType.Equals(MediaTypes.JSON.MediaType))
                     try
                     {
-                        var value = await CallSerialization.DeserializeJsonResponse<T>(response);
-                        return new CallResult<T>(value, request, response, elapsedMilliseconds);
+                        T value = null;
+                        // ContentType may be JSON but requested return type is string, therefore no deserialization required.
+                        if (typeof(T) == typeof(string))
+                        {
+                            return new CallResult<T>(responseString, request, response, elapsedMilliseconds);
+                        }
+
+                        value = JsonConvert.DeserializeObject<T>(responseString) ?? throw new InvalidOperationException("deserializingT");
+                        return new CallResult<T>(value, responseString, request, response, elapsedMilliseconds);
                     }
                     catch (Exception exception)
                     {
                         // try get the raw text
-                        var raw = await CallSerialization.ResponseAsString(response);
-                        return new CallResult<T>(exception, raw, request, response, elapsedMilliseconds);
+                        return new CallResult<T>(exception, responseString, request, response, elapsedMilliseconds);
                     }
 
 
                 if (response.Content.Headers.ContentType.MediaType.Equals(MediaTypes.TEXT.MediaType))
                 {
-                    var value = await CallSerialization.ResponseAsString(response);
-                    return new CallResult<T>(value, request, response, elapsedMilliseconds);
+                    return new CallResult<T>(responseString, request, response, elapsedMilliseconds);
                 }
 
-                var rawString = await CallSerialization.ResponseAsString(response);
                 return new CallResult<T>(new Exception($"Response from {request.RequestUri.AbsoluteUri} returned an unsupported ContentType {response.Content.Headers.ContentType.MediaType}"),
-                    rawString, request, response, elapsedMilliseconds);
+                    responseString, request, response, elapsedMilliseconds);
             }
             catch (Exception ex)
             {
-                // ex occurred deserializing from json.
-                var raw = await CallSerialization.ResponseAsString(response);
-                return new CallResult<T>(ex, raw, request, response, elapsedMilliseconds);
+                // ex probably occurred deserializing from json.
+                return new CallResult<T>(ex, responseString, request, response, elapsedMilliseconds);
             }
         }
     }
