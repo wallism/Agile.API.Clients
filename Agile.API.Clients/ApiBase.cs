@@ -112,7 +112,9 @@ namespace Agile.API.Clients
 
         protected virtual string GetPrivateRequestUri(string path, string querystring = "")
         {
-            var url = $"{BaseUrl}/{path}";
+            var url = path.StartsWith(BaseUrl) // allow full url to be passed (useful for pagination)
+                ? path
+                : $"{BaseUrl}/{path}";
             return string.IsNullOrWhiteSpace(querystring)
                 ? url
                 : $"{url}?{querystring}";
