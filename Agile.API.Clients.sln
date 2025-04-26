@@ -1,11 +1,11 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.28307.271
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Agile.API.Clients.Tests", "Agile.API.Clients.Tests\Agile.API.Clients.Tests.csproj", "{115E11B9-FCDE-41BF-9067-BD5CACE74FD7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Agile.API.Clients", "Agile.API.Clients\Agile.API.Clients.csproj", "{D1D89F3B-A17F-4426-81B1-7CD1E923B05C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Agile.API.Clients", "Agile.API.Clients\Agile.API.Clients.csproj", "{D1D89F3B-A17F-4426-81B1-7CD1E923B05C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

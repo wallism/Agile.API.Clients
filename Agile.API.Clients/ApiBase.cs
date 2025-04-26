@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Agile.API.Clients.CallHandling;
 using Agile.API.Clients.Helpers;
 using Microsoft.Extensions.Configuration;
+using Newtonsoft.Json;
 using PennedObjects.RateLimiting;
 
 namespace Agile.API.Clients
@@ -16,7 +17,7 @@ namespace Agile.API.Clients
     public abstract class ApiBase
     {
         protected IConfiguration Configuration { get; }
-        
+
         protected ApiBase(IConfiguration configuration)
         {
             Configuration = configuration;
@@ -297,9 +298,14 @@ namespace Agile.API.Clients
                     var formData = (IEnumerable<KeyValuePair<string, string>>)payload;
                     request.Content = new FormUrlEncodedContent(formData);
                 }
+                else if (payload is string stringPayload)
+                {
+                    request.Content = new StringContent(stringPayload);
+                }
                 else
                 {
-                    request.Content = new StringContent(payload as string);
+                    var serializedPayload = JsonConvert.SerializeObject(payload);
+                    request.Content = new StringContent(serializedPayload);
                 }
 
                 request.Content.Headers.ContentType = MethodContentType;
