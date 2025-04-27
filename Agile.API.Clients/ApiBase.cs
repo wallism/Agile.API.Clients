@@ -1,11 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Net;
-using System.Net.Http;
+﻿using System.Diagnostics;
 using System.Net.Http.Headers;
-using System.Threading;
-using System.Threading.Tasks;
 using Agile.API.Clients.CallHandling;
 using Agile.API.Clients.Helpers;
 using Microsoft.Extensions.Configuration;
@@ -17,10 +11,15 @@ namespace Agile.API.Clients
     public abstract class ApiBase
     {
         protected IConfiguration Configuration { get; }
+        private readonly IHttpClientFactory _httpClientFactory;
+        private HttpClient? httpClient;
 
-        protected ApiBase(IConfiguration configuration)
+        protected ApiBase(IConfiguration configuration, 
+            IHttpClientFactory httpClientFactory)
         {
             Configuration = configuration;
+            _httpClientFactory = httpClientFactory;
+
             RateGateOccurrences = configuration[$"APIS:{ApiId}:RateLimit:Occurrences"] ?? "10";
             RateGateSeconds = configuration[$"APIS:{ApiId}:RateLimit:Seconds"] ?? "1";
 
@@ -28,15 +27,6 @@ namespace Agile.API.Clients
                 TimeSpan.FromSeconds(int.Parse(RateGateSeconds))));
 
             HasRateLimit = true; // force on by default, may be overwritten in inheritors
-
-            // one httpClient per api (better than one for all anyway)
-            // TODO consider IHttpClientFactory
-            var handler = new HttpClientHandler
-            {
-                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
-            };
-
-            HttpClient = new HttpClient(handler);
         }
 
 
@@ -48,7 +38,10 @@ namespace Agile.API.Clients
         public bool HasRateLimit { get; protected set; }
         protected string RateGateOccurrences { get; set; }
         protected string RateGateSeconds { get; set; }
-        private HttpClient HttpClient { get; set; }
+
+        private HttpClient HttpClient => httpClient ??= _httpClientFactory.CreateClient(HttpClientName);
+
+
         private RateGate RateGate { get; set; }
 
         protected string ApiKey { get; private set; }
@@ -62,6 +55,8 @@ namespace Agile.API.Clients
         /// </summary>
         public abstract string ApiId { get; }
 
+        protected virtual string HttpClientName { get; set; }  = DefaultHttpClientName;
+        public const string DefaultHttpClientName = "DefaultHttpClient";
 
         public ApiMethod<T> PublicGet<T>(MethodPriority priority) where T : class
         {
@@ -298,7 +293,7 @@ namespace Agile.API.Clients
                     var formData = (IEnumerable<KeyValuePair<string, string>>)payload;
                     request.Content = new FormUrlEncodedContent(formData);
                 }
-                else if (payload is string stringPayload)
+                else if(payload is string stringPayload)
                 {
                     request.Content = new StringContent(stringPayload);
                 }

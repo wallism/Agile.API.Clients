@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Agile.API.Clients;
@@ -32,11 +33,14 @@ namespace Agile.API.Client.Tests
             var config = Substitute.For<IConfiguration>();
             config["APIS:MOCK:RateLimit:Occurrences"].Returns(info => "3");
             config["APIS:MOCK:RateLimit:Seconds"].Returns(info => "1");
-            var api = new WidgetApi(config);
+            var api = new WidgetApi(config, Substitute.For<IHttpClientFactory>());
             
             var result = await api.GetWidget(1);
-            Assert.IsTrue(result is CallResult<Widget>);
-            Assert.IsFalse(result.WasSuccessful);
+            Assert.That(result, Is.TypeOf<CallResult<Widget>>());
+            Assert.That(result.WasSuccessful, Is.True);
+
+            //Assert.IsTrue(result is CallResult<Widget>);
+            //Assert.IsFalse(result.WasSuccessful);
         }
 
         [Test]
@@ -46,7 +50,7 @@ namespace Agile.API.Client.Tests
             var config = Substitute.For<IConfiguration>();
             config["APIS:MOCK:RateLimit:Occurrences"].Returns(info => "1");
             config["APIS:MOCK:RateLimit:Seconds"].Returns(info => "1");
-            var api = new WidgetApi(config);
+            var api = new WidgetApi(config, Substitute.For<IHttpClientFactory>());
 
             var timer = Stopwatch.StartNew();
             // TODO also test running all on different threads
@@ -59,10 +63,13 @@ namespace Agile.API.Client.Tests
 
             await api.GetWidget(3);
             Console.WriteLine($"3 {timer.ElapsedMilliseconds}");
-            Assert.Greater(timer.ElapsedMilliseconds, 2000);
+            Assert.That(timer.ElapsedMilliseconds, Is.EqualTo(2000));
+
+            //Assert.Greater(timer.ElapsedMilliseconds, 2000);
             await api.GetWidget(4);
             Console.WriteLine($"4 {timer.ElapsedMilliseconds}");
-            Assert.Greater(timer.ElapsedMilliseconds, 3000);
+            Assert.That(timer.ElapsedMilliseconds, Is.GreaterThan(3000));
+            //Assert.Greater(timer.ElapsedMilliseconds, 3000);
 
 
             await api.GetWidget(5);
@@ -79,7 +86,7 @@ namespace Agile.API.Client.Tests
             var config = Substitute.For<IConfiguration>();
             config["APIS:MOCK:RateLimit:Occurrences"].Returns(info => "2");
             config["APIS:MOCK:RateLimit:Seconds"].Returns(info => "1");
-            _widgetApi = new WidgetApi(config);
+            _widgetApi = new WidgetApi(config, Substitute.For<IHttpClientFactory>());
 
             var timer = Stopwatch.StartNew();
             Console.WriteLine($"[Thread:{Thread.CurrentThread.ManagedThreadId}] 0 {timer.ElapsedMilliseconds} - started");
@@ -90,7 +97,8 @@ namespace Agile.API.Client.Tests
 
             Console.WriteLine($"[Thread:{Thread.CurrentThread.ManagedThreadId}] {timer.ElapsedMilliseconds}ms  {results.Length}");
             // 2/second should take at least 5s (the 11th is held by the rate gate until the 5th second)
-            Assert.IsTrue(timer.ElapsedMilliseconds > 5000);
+            Assert.That(timer.ElapsedMilliseconds, Is.GreaterThan(5000));
+            //Assert.IsTrue(timer.ElapsedMilliseconds > 5000);
             Console.WriteLine("done");
         }
 

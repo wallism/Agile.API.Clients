@@ -8,7 +8,7 @@ namespace Agile.API.Clients.Tests.Mocks
 {
     public class WidgetApi : ApiBase
     {
-        public WidgetApi(IConfiguration config) : base(config)
+        public WidgetApi(IConfiguration config, IHttpClientFactory httpClientFactory) : base(config, httpClientFactory)
         {
             get = PublicGet<Widget>(MethodPriority.Normal);
             post = PrivatePost<Widget>(MethodPriority.Normal);
