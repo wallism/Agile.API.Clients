@@ -20,8 +20,10 @@ namespace Agile.API.Clients
             Configuration = configuration;
             _httpClientFactory = httpClientFactory;
 
-            RateGateOccurrences = configuration[$"APIS:{ApiId}:RateLimit:Occurrences"] ?? "10";
-            RateGateSeconds = configuration[$"APIS:{ApiId}:RateLimit:Seconds"] ?? "1";
+            var occurrences = configuration[$"APIS:{ApiId}:RateLimit:Occurrences"];
+            RateGateOccurrences = string.IsNullOrEmpty(occurrences) ? "10" : occurrences;
+            var seconds = configuration[$"APIS:{ApiId}:RateLimit:Seconds"];
+            RateGateSeconds = string.IsNullOrEmpty(seconds) ? "1" : seconds;
 
             RateGate = new RateGate(RateLimit.Build(int.Parse(RateGateOccurrences),
                 TimeSpan.FromSeconds(int.Parse(RateGateSeconds))));
