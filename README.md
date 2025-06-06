@@ -32,8 +32,7 @@ public class MyApi
     /// <summary>
     /// ctor
     /// </summary>
-    /// <param name="configuration">config</param>
-    /// <param name="postMethod">use to pass in mocks for testing</param>
+    /// <param name="apiMethod">use to pass in mocks for testing</param>
     public MyApi(IApiMethod<TResponse>? apiMethod = null)
     {
         _apiMethod = apiMethod ?? PublicGet<TResponse>(MethodPriority.Normal, MediaTypes.JSON);
