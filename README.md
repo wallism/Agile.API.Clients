@@ -39,9 +39,12 @@ public class MyApi
         _apiMethod = apiMethod ?? PublicGet<TResponse>(MethodPriority.Normal, MediaTypes.JSON);
     }
 
-    public async Task<CallResult<TResponse>> GetDataAsync(string endpoint)
+    protected override string BaseUrl => "https://myapi.com";
+
+    public async Task<CallResult<TResponse>> GetDataAsync()
     {
-        return await _apiMethod.Call<object>(endpoint, null);
+        var path = "route/to/the/endpoint";
+        return await _apiMethod.Call<object>(path, null);
     }
 }
 ```
@@ -65,6 +68,34 @@ See XML comments in code for full documentation.
 - Handle `CallResult<T>` for error and success cases.
 - Respect rate limits and use built-in retry logic.
 - Never commit secrets or access tokens.
+
+## Managing Secrets Locally
+
+To use secrets (such as Azure DevOps access tokens) during local development, follow these best practices:
+
+- **Never commit secrets to source control.**
+- Use [user secrets](https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets) for development:
+
+```shell
+# In your project directory
+# Initialize user secrets (if not already done)
+dotnet user-secrets init
+
+# Add a secret (replace KEY and VALUE)
+dotnet user-secrets set "AzureDevOps:AccessToken" "YOUR_TOKEN_HERE"
+```
+
+- Access secrets in your code via configuration (e.g., `IConfiguration`).
+- For CI/CD or production, use environment variables or a secure vault (e.g., Azure Key Vault).
+
+**Example (accessing a secret in C#):**
+
+```csharp
+var accessToken = configuration["AzureDevOps:AccessToken"];
+```
+
+See the [Microsoft documentation](https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets) for more details.
+
 
 ## Contributing
 - Follow the code style and structure.
