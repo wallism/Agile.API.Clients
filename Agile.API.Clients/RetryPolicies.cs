@@ -18,10 +18,12 @@ namespace Agile.API.Clients
             return HttpPolicyExtensions
                 .HandleTransientHttpError() // 5xx and network errors
                 .OrResult(r =>
-                    r.StatusCode != HttpStatusCode.TooManyRequests
-                    && r.StatusCode != HttpStatusCode.Forbidden
-                    && r.StatusCode != HttpStatusCode.NotFound
-                    && !r.IsSuccessStatusCode)
+                    !r.IsSuccessStatusCode &&
+                    r.StatusCode != HttpStatusCode.TooManyRequests &&
+                    r.StatusCode != HttpStatusCode.Forbidden &&
+                    r.StatusCode != HttpStatusCode.BadRequest &&
+                    r.StatusCode != HttpStatusCode.NotFound)
+
                 .WaitAndRetryAsync(
                     retryCount: 3,
                     sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
@@ -61,7 +63,7 @@ namespace Agile.API.Clients
         {
             return Policy
                 .HandleResult<HttpResponseMessage>(r =>
-                    ((int)r.StatusCode >= 400 && (int)r.StatusCode < 415 && r.StatusCode != HttpStatusCode.TooManyRequests))
+                    (int)r.StatusCode >= 400 && (int)r.StatusCode < 415)
                 .WaitAndRetryAsync(
                     retryCount: 0,
                     sleepDurationProvider: _ => TimeSpan.Zero,
