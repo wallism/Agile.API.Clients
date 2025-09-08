@@ -20,6 +20,7 @@ namespace Agile.API.Clients
                 .OrResult(r =>
                     r.StatusCode != HttpStatusCode.TooManyRequests
                     && r.StatusCode != HttpStatusCode.Forbidden
+                    && r.StatusCode != HttpStatusCode.NotFound
                     && !r.IsSuccessStatusCode)
                 .WaitAndRetryAsync(
                     retryCount: 3,
@@ -83,7 +84,7 @@ namespace Agile.API.Clients
                     sleepDurationProvider: _ => TimeSpan.Zero,
                     onRetry: (outcome, timespan, attempt, context) =>
                     {
-                        Console.WriteLine($"POLLY 403 Retry - should not be happening!");
+                        Console.WriteLine($"POLLY 404 Retry - should not be happening!");
                     });
         }
 
