@@ -50,41 +50,24 @@ namespace Agile.API.Clients
                     });
         }
 
-        /// <summary>
-        /// Returns a retry policy for HTTP 403 Forbidden responses.
-        /// Does not retry, as forbidden errors are unlikely to be resolved by retrying.
-        /// Reason: Retrying 403 is not useful; access is denied and will not change without intervention.
-        /// </summary>
-        /// <returns>The Polly async retry policy for 403 responses.</returns>
-        public static IAsyncPolicy<HttpResponseMessage> GetForbiddenPolicy()
-        {
-            return Policy
-                .HandleResult<HttpResponseMessage>(r => r.StatusCode == HttpStatusCode.Forbidden)
-                .WaitAndRetryAsync(
-                    retryCount: 0,
-                    sleepDurationProvider: _ => TimeSpan.Zero,
-                    onRetry: (outcome, timespan, attempt, context) =>
-                    {
-                        Console.WriteLine($"POLLY 403 Retry - should not be happening!");
-                    });
-        }
 
         /// <summary>
-        /// Returns a retry policy for HTTP 404 Not Found responses.
-        /// Does not retry, as the resource is not found and retrying will not change the result.
-        /// Reason: Retrying 404 is not useful; the resource does not exist or is unavailable.
+        /// Returns a policy for handling all 4xx responses except 429 (Too Many Requests).
+        /// Does not retry, as client errors are unlikely to be resolved by retrying.
+        /// Reason: Retrying 4xx (except 429) is not useful; client errors require intervention.
         /// </summary>
-        /// <returns>The Polly async retry policy for 404 responses.</returns>
-        public static IAsyncPolicy<HttpResponseMessage> GetNotFoundPolicy()
+        /// <returns>The Polly async policy for 4xx responses (excluding 429).</returns>
+        public static IAsyncPolicy<HttpResponseMessage> GetClientErrorPolicy()
         {
             return Policy
-                .HandleResult<HttpResponseMessage>(r => r.StatusCode == HttpStatusCode.NotFound)
+                .HandleResult<HttpResponseMessage>(r =>
+                    ((int)r.StatusCode >= 400 && (int)r.StatusCode < 415 && r.StatusCode != HttpStatusCode.TooManyRequests))
                 .WaitAndRetryAsync(
                     retryCount: 0,
                     sleepDurationProvider: _ => TimeSpan.Zero,
                     onRetry: (outcome, timespan, attempt, context) =>
                     {
-                        Console.WriteLine($"POLLY 404 Retry - should not be happening!");
+                        Console.WriteLine($"POLLY 4xx (except 429) Retry - should not be happening! Status: {outcome?.Result?.StatusCode}");
                     });
         }
 
@@ -94,10 +77,11 @@ namespace Agile.API.Clients
         /// </summary>
         public static IAsyncPolicy<HttpResponseMessage> GetRetryPolicies()
         {
-            return Policy.WrapAsync(GetDefaultRetryPolicy(),
-                GetTooManyRequestsPolicy(), 
-                GetForbiddenPolicy(),
-                GetNotFoundPolicy());
+            return Policy.WrapAsync(
+                GetDefaultRetryPolicy(),
+                GetTooManyRequestsPolicy(),
+                GetClientErrorPolicy()
+            );
         }
 
     }
