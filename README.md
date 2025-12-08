@@ -1,72 +1,157 @@
 # Agile.API.Clients
 
-A .NET 8.0+ library for robust, testable, and extensible interaction with Azure DevOps APIs, focusing on release management and pipeline automation.
+A .NET 10.0 library for robust, testable, and extensible API client implementations with built-in rate limiting, retry policies, and unified error handling.
 
 ## Features
-- **Abstractions for API calls**: Interfaces like `IApiMethod<TResponse>` for dependency injection and testing.
-- **Call Handling**: Unified result types, serialization, and error handling.
-- **Rate Limiting**: Built-in support for API rate limiting and retry logic.
-- **Helpers**: Utilities for media types, server time, and more.
-- **Extensible**: Designed for easy extension and integration into your own services.
+
+- **API Base Class**: Abstract `ApiBase` class providing a foundation for building API clients with built-in HTTP client management, rate limiting, and authentication support.
+- **Call Handling**: Unified `CallResult<T>` type for consistent success/error handling across all API calls.
+- **Rate Limiting**: Built-in `ApiRateLimiter` with configurable limits via `IConfiguration`.
+- **Retry Policies**: Integration with Polly for resilient HTTP calls.
+- **Helpers**: Utilities for media types (`MediaTypes`), server time (`ServerTime`), and more.
+- **Testable**: Designed for dependency injection and easy mocking in unit tests.
+
+## Project Structure
+
+```
+Agile.API.Clients/
+├── ApiBase.cs              # Abstract base class for API clients
+├── MethodPriority.cs       # Priority levels for rate limiting
+├── RetryPolicies.cs        # Polly retry policy configurations
+├── CallHandling/
+│   ├── CallResult.cs       # Unified result wrapper for API calls
+│   └── CallSerialization.cs
+├── Helpers/
+│   ├── MediaTypes.cs       # Common media type constants
+│   └── ServerTime.cs       # UTC timestamp utilities
+└── RateLimiting/
+    ├── ApiRateLimiter.cs   # Rate limiter implementation
+    ├── RateGate.cs         # Token bucket rate gate
+    └── RateLimit.cs        # Rate limit configuration
+```
 
 ## Getting Started
 
+### Prerequisites
+
+- .NET 10.0 SDK or later
+- Visual Studio 2022+ or VS Code with C# Dev Kit
+
 ### Installation
-Add a reference to `Agile.API.Clients` in your .NET project:
+
+Add a project reference to `Agile.API.Clients` in your .NET project:
 
 ```shell
-# currently there is not a nuget package
-# Using dotnet CLI
-# dotnet add package Agile.API.Clients
+# Currently there is no NuGet package
+# Add as a project reference
+dotnet add reference ../Agile.API.Clients/Agile.API.Clients.csproj
 ```
 
 ### Example Usage
 
+Create a custom API client by inheriting from `ApiBase`:
+
 ```csharp
 using Agile.API.Clients;
 using Agile.API.Clients.CallHandling;
+using Microsoft.Extensions.Configuration;
 
-public class MyApi
+public class MyApi : ApiBase
 {
-    private readonly IApiMethod<TResponse> _apiMethod;
-    /// <summary>
-    /// ctor
-    /// </summary>
-    /// <param name="apiMethod">use to pass in mocks for testing</param>
-    public MyApi(IApiMethod<TResponse>? apiMethod = null)
+    public MyApi(IConfiguration configuration, IHttpClientFactory httpClientFactory)
+        : base(configuration, httpClientFactory)
     {
-        _apiMethod = apiMethod ?? PublicGet<TResponse>(MethodPriority.Normal, MediaTypes.JSON);
     }
 
-    protected override string BaseUrl => "https://myapi.com";
+    protected override string BaseUrl => "https://api.example.com";
+    public override string ApiId => "MyApi";
 
-    public async Task<CallResult<TResponse>> GetDataAsync()
+    public async Task<CallResult<MyResponse>> GetDataAsync(CancellationToken cancellationToken = default)
     {
-        var path = "route/to/the/endpoint";
-        return await _apiMethod.Call<object>(path, null);
+        var method = PublicGet<MyResponse>(MethodPriority.Normal);
+        return await method.Call("v1/data", payload: null, cancellationToken: cancellationToken);
     }
+
+    public async Task<CallResult<MyResponse>> PostDataAsync(MyRequest request, CancellationToken cancellationToken = default)
+    {
+        var method = PrivatePost<MyResponse>(MethodPriority.Normal);
+        return await method.Call("v1/data", payload: request, cancellationToken: cancellationToken);
+    }
+}
+```
+
+### Handling Results
+
+Always check `CallResult<T>` for success before accessing the value:
+
+```csharp
+var result = await myApi.GetDataAsync();
+
+if (result.WasSuccessful)
+{
+    var data = result.Value;
+    // Process successful response
+}
+else
+{
+    // Handle error
+    Console.WriteLine($"Error: {result.StatusCode} - {result.Exception?.Message}");
+}
+```
+
+### Configuration
+
+Configure rate limits via `IConfiguration` (appsettings.json or user secrets):
+
+```json
+{
+  "APIS": {
+    "MyApi": {
+      "RateLimit": {
+        "Occurrences": "10",
+        "Seconds": "1"
+      }
+    }
+  }
 }
 ```
 
 ## API Reference
 
-### `IApiMethod<TResponse>`
+### `ApiBase`
 
-```csharp
-Task<CallResult<TResponse>> Call<T>(string path, T payload, string querystring = "", CancellationToken cancellationToken = default);
-```
-- **path**: API endpoint
-- **payload**: JSON payload
-- **querystring**: Optional query string
-- **cancellationToken**: For async cancellation
+Abstract base class for API clients. Key members:
+
+| Member | Description |
+|--------|-------------|
+| `BaseUrl` | Abstract property for the API base URL |
+| `ApiId` | Abstract property identifying the API (used in config and logging) |
+| `PublicGet<T>()` | Creates a public GET method |
+| `PrivateGet<T>()` | Creates an authenticated GET method |
+| `PrivatePost<T>()` | Creates an authenticated POST method |
+| `PrivateDelete<T>()` | Creates an authenticated DELETE method |
+
+### `CallResult<T>`
+
+Wrapper for API call results:
+
+| Property | Description |
+|----------|-------------|
+| `WasSuccessful` | `true` if the call succeeded without exceptions |
+| `Value` | The deserialized response (when successful) |
+| `StatusCode` | HTTP status code |
+| `Exception` | Any exception that occurred |
+| `RawText` | Raw response text |
 
 See XML comments in code for full documentation.
 
 ## Best Practices
-- Use dependency injection for all API abstractions.
-- Handle `CallResult<T>` for error and success cases.
-- Respect rate limits and use built-in retry logic.
-- Never commit secrets or access tokens.
+
+- **Use Dependency Injection**: Register `IHttpClientFactory` and `IConfiguration` in your DI container.
+- **Handle `CallResult<T>`**: Always check `WasSuccessful` before accessing `Value`.
+- **Respect Rate Limits**: Use built-in rate limiting; configure via `IConfiguration`.
+- **Override `SetPrivateRequestProperties`**: Implement authentication logic for private endpoints.
+- **Never Commit Secrets**: Use user secrets or environment variables for API keys.
 
 ## Managing Secrets Locally
 
