@@ -17,13 +17,18 @@ A .NET 10.0 library for robust, testable, and extensible API client implementati
 Agile.API.Clients/
 ├── ApiBase.cs              # Abstract base class for API clients
 ├── MethodPriority.cs       # Priority levels for rate limiting
-├── RetryPolicies.cs        # Polly retry policy configurations
+├── RetryPolicies.cs        # Static convenience methods (delegates to RetryPolicyProvider)
 ├── CallHandling/
 │   ├── CallResult.cs       # Unified result wrapper for API calls
 │   └── CallSerialization.cs
 ├── Helpers/
 │   ├── MediaTypes.cs       # Common media type constants
 │   └── ServerTime.cs       # UTC timestamp utilities
+├── Infrastructure/
+│   ├── IRetryPolicyProvider.cs      # Interface for retry policy provider
+│   ├── RetryPolicyProvider.cs       # DI-friendly retry policy implementation
+│   ├── ServiceCollectionExtensions.cs # DI registration extensions
+│   └── ...                 # HTTP client infrastructure
 └── RateLimiting/
     ├── ApiRateLimiter.cs   # Rate limiter implementation
     ├── RateGate.cs         # Token bucket rate gate
@@ -116,6 +121,57 @@ Configure rate limits via `IConfiguration` (appsettings.json or user secrets):
 }
 ```
 
+### Retry Policies
+
+The library provides resilient HTTP retry policies via Polly. You can use either the static convenience methods or dependency injection.
+
+**Option 1: Dependency Injection (Recommended)**
+
+```csharp
+using Agile.API.Clients.Infrastructure;
+
+// Register the retry policy provider
+services.AddRetryPolicyProvider();
+
+// Configure HttpClient with retry policies
+services.AddHttpClient(ApiBase.DefaultHttpClientName, client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60);
+})
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+})
+.AddPolicyHandler((serviceProvider, request) =>
+    serviceProvider.GetRequiredService<IRetryPolicyProvider>().GetRetryPolicies());
+```
+
+**Option 2: Static Methods (Simple scenarios)**
+
+```csharp
+using Agile.API.Clients;
+
+services.AddHttpClient(ApiBase.DefaultHttpClientName, client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60);
+})
+.AddPolicyHandler((services, request) => RetryPolicies.GetRetryPolicies());
+```
+
+**Custom Retry Policy Provider**
+
+Implement `IRetryPolicyProvider` for custom retry behavior:
+
+```csharp
+public class CustomRetryPolicyProvider : IRetryPolicyProvider
+{
+    // Implement custom retry logic
+}
+
+// Register custom implementation
+services.AddRetryPolicyProvider<CustomRetryPolicyProvider>();
+```
+
 ## API Reference
 
 ### `ApiBase`
@@ -142,6 +198,17 @@ Wrapper for API call results:
 | `StatusCode` | HTTP status code |
 | `Exception` | Any exception that occurred |
 | `RawText` | Raw response text |
+
+### `IRetryPolicyProvider`
+
+Interface for providing HTTP retry policies (injectable via DI):
+
+| Method | Description |
+|--------|-------------|
+| `GetDefaultRetryPolicy()` | Retry policy for transient errors (5xx, network errors) |
+| `GetTooManyRequestsPolicy()` | Retry policy for 429 responses with fixed delay |
+| `GetClientErrorPolicy()` | Policy for 4xx errors (no retry) |
+| `GetRetryPolicies()` | Composite policy combining all strategies |
 
 See XML comments in code for full documentation.
 

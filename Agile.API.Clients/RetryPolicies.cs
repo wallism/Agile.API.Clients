@@ -1,13 +1,22 @@
-﻿using Polly;
-using System.Net;
-using Polly.Extensions.Http;
+﻿using Agile.API.Clients.Infrastructure;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
+using Polly;
 
 namespace Agile.API.Clients
 {
+    /// <summary>
+    /// Static convenience methods for retry policies.
+    /// For DI scenarios, use <see cref="IRetryPolicyProvider"/> and <see cref="RetryPolicyProvider"/> instead.
+    /// </summary>
+    /// <remarks>
+    /// These static methods delegate to a default <see cref="RetryPolicyProvider"/> instance
+    /// and are provided for backward compatibility and simple usage scenarios.
+    /// For production applications, prefer injecting <see cref="IRetryPolicyProvider"/>.
+    /// </remarks>
     public static class RetryPolicies
     {
+        private static readonly RetryPolicyProvider DefaultProvider = new();
+
         /// <summary>
         /// Returns the default retry policy for transient HTTP errors and
         /// non-success responses (excluding 429 and 403).
@@ -16,9 +25,7 @@ namespace Agile.API.Clients
         /// </summary>
         /// <returns>The default Polly async retry policy for HTTP requests.</returns>
         public static IAsyncPolicy<HttpResponseMessage> GetDefaultRetryPolicy()
-        {
-            return GetDefaultRetryPolicy(NullLogger.Instance);
-        }
+            => DefaultProvider.GetDefaultRetryPolicy();
 
         /// <summary>
         /// Returns the default retry policy for transient HTTP errors and
@@ -27,28 +34,7 @@ namespace Agile.API.Clients
         /// <param name="logger">The logger to use for retry logging.</param>
         /// <returns>The default Polly async retry policy for HTTP requests.</returns>
         public static IAsyncPolicy<HttpResponseMessage> GetDefaultRetryPolicy(ILogger logger)
-        {
-            return HttpPolicyExtensions
-                .HandleTransientHttpError() // 5xx and network errors
-                .OrResult(r =>
-                    !r.IsSuccessStatusCode &&
-                    r.StatusCode != HttpStatusCode.TooManyRequests &&
-                    r.StatusCode != HttpStatusCode.Forbidden &&
-                    r.StatusCode != HttpStatusCode.BadRequest &&
-                    r.StatusCode != HttpStatusCode.NotFound)
-
-                .WaitAndRetryAsync(
-                    retryCount: 3,
-                    sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
-                    onRetry: (outcome, timespan, attempt, context) =>
-                    {
-                        logger.LogWarning(
-                            "HTTP retry {Attempt} after {DelaySeconds}s due to {StatusCode}",
-                            attempt,
-                            timespan.TotalSeconds,
-                            outcome?.Result?.StatusCode);
-                    });
-        }
+            => new RetryPolicyProvider(logger).GetDefaultRetryPolicy();
 
         /// <summary>
         /// Returns a retry policy for HTTP 429 Too Many Requests responses.
@@ -57,9 +43,7 @@ namespace Agile.API.Clients
         /// </summary>
         /// <returns>The Polly async retry policy for 429 responses.</returns>
         public static IAsyncPolicy<HttpResponseMessage> GetTooManyRequestsPolicy()
-        {
-            return GetTooManyRequestsPolicy(NullLogger.Instance);
-        }
+            => DefaultProvider.GetTooManyRequestsPolicy();
 
         /// <summary>
         /// Returns a retry policy for HTTP 429 Too Many Requests responses with logging support.
@@ -67,21 +51,7 @@ namespace Agile.API.Clients
         /// <param name="logger">The logger to use for retry logging.</param>
         /// <returns>The Polly async retry policy for 429 responses.</returns>
         public static IAsyncPolicy<HttpResponseMessage> GetTooManyRequestsPolicy(ILogger logger)
-        {
-            return Policy
-                .HandleResult<HttpResponseMessage>(r => r.StatusCode == HttpStatusCode.TooManyRequests)
-                .WaitAndRetryAsync(
-                    retryCount: 4,
-                    sleepDurationProvider: _ => TimeSpan.FromSeconds(14),
-                    onRetry: (outcome, timespan, attempt, context) =>
-                    {
-                        logger.LogWarning(
-                            "Rate limited (429). Retry {Attempt} after {DelaySeconds}s",
-                            attempt,
-                            timespan.TotalSeconds);
-                    });
-        }
-
+            => new RetryPolicyProvider(logger).GetTooManyRequestsPolicy();
 
         /// <summary>
         /// Returns a policy for handling all 4xx responses except 429 (Too Many Requests).
@@ -90,9 +60,7 @@ namespace Agile.API.Clients
         /// </summary>
         /// <returns>The Polly async policy for 4xx responses (excluding 429).</returns>
         public static IAsyncPolicy<HttpResponseMessage> GetClientErrorPolicy()
-        {
-            return GetClientErrorPolicy(NullLogger.Instance);
-        }
+            => DefaultProvider.GetClientErrorPolicy();
 
         /// <summary>
         /// Returns a policy for handling all 4xx responses except 429 (Too Many Requests) with logging support.
@@ -100,43 +68,20 @@ namespace Agile.API.Clients
         /// <param name="logger">The logger to use for retry logging.</param>
         /// <returns>The Polly async policy for 4xx responses (excluding 429).</returns>
         public static IAsyncPolicy<HttpResponseMessage> GetClientErrorPolicy(ILogger logger)
-        {
-            return Policy
-                .HandleResult<HttpResponseMessage>(r =>
-                    (int)r.StatusCode >= 400 && (int)r.StatusCode < 415)
-                .WaitAndRetryAsync(
-                    retryCount: 0,
-                    sleepDurationProvider: _ => TimeSpan.Zero,
-                    onRetry: (outcome, timespan, attempt, context) =>
-                    {
-                        // This should not happen since retryCount is 0, but log if it does
-                        logger.LogError(
-                            "Unexpected retry for client error. Status: {StatusCode}",
-                            outcome?.Result?.StatusCode);
-                    });
-        }
+            => new RetryPolicyProvider(logger).GetClientErrorPolicy();
 
         /// <summary>
         /// Wraps all retry policies into a single composite policy for HTTP requests.
         /// Combines default, TooManyRequests, Forbidden, and NotFound policies for comprehensive error handling.
         /// </summary>
         public static IAsyncPolicy<HttpResponseMessage> GetRetryPolicies()
-        {
-            return GetRetryPolicies(NullLogger.Instance);
-        }
+            => DefaultProvider.GetRetryPolicies();
 
         /// <summary>
         /// Wraps all retry policies into a single composite policy for HTTP requests with logging support.
         /// </summary>
         /// <param name="logger">The logger to use for retry logging.</param>
         public static IAsyncPolicy<HttpResponseMessage> GetRetryPolicies(ILogger logger)
-        {
-            return Policy.WrapAsync(
-                GetDefaultRetryPolicy(logger),
-                GetTooManyRequestsPolicy(logger),
-                GetClientErrorPolicy(logger)
-            );
-        }
-
+            => new RetryPolicyProvider(logger).GetRetryPolicies();
     }
 }

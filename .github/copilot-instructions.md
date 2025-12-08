@@ -105,9 +105,10 @@ Configure via `IConfiguration`:
 Agile.API.Clients/
 ├── ApiBase.cs              # Base class - extend for new APIs
 ├── MethodPriority.cs       # Rate limit priorities
-├── RetryPolicies.cs        # Polly configurations
+├── RetryPolicies.cs        # Static convenience methods for retry policies
 ├── CallHandling/           # Result types and serialization
 ├── Helpers/                # Utilities (MediaTypes, ServerTime)
+├── Infrastructure/         # DI infrastructure (IRetryPolicyProvider, HttpClientProvider)
 └── RateLimiting/           # Rate limiting infrastructure
 
 Agile.API.Clients.Tests/
@@ -170,6 +171,31 @@ public MyApi(IConfiguration configuration, IHttpClientFactory httpClientFactory)
 }
 ```
 
+### Configuring Retry Policies
+
+Register retry policies with dependency injection:
+
+```csharp
+using Agile.API.Clients.Infrastructure;
+
+// Register the default retry policy provider
+services.AddRetryPolicyProvider();
+
+// Configure HttpClient with retry policies
+services.AddHttpClient(ApiBase.DefaultHttpClientName, client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60);
+})
+.AddPolicyHandler((sp, request) =>
+    sp.GetRequiredService<IRetryPolicyProvider>().GetRetryPolicies());
+```
+
+For custom retry behavior, implement `IRetryPolicyProvider`:
+
+```csharp
+services.AddRetryPolicyProvider<MyCustomRetryPolicyProvider>();
+```
+
 ## Do's and Don'ts
 
 ### Do
@@ -195,3 +221,5 @@ public MyApi(IConfiguration configuration, IHttpClientFactory httpClientFactory)
 - Rate limiting is automatic; configure via `APIS:{ApiId}:RateLimit` settings
 - `MethodPriority.High` bypasses rate limiting for critical calls
 - `CallResult<T>` captures the full response including raw text for debugging
+- Use `IRetryPolicyProvider` for DI-friendly retry policies; register via `services.AddRetryPolicyProvider()`
+- Static `RetryPolicies` class delegates to `RetryPolicyProvider` for backward compatibility
