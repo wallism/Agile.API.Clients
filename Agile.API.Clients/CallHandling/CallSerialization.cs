@@ -2,6 +2,8 @@
 using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Newtonsoft.Json;
 
 namespace Agile.API.Clients.CallHandling
@@ -23,6 +25,11 @@ namespace Agile.API.Clients.CallHandling
 
         public static async Task<string> ResponseAsString(HttpResponseMessage response)
         {
+            return await ResponseAsString(response, NullLogger.Instance);
+        }
+
+        public static async Task<string> ResponseAsString(HttpResponseMessage response, ILogger logger)
+        {
             try
             {
                 using var stream = await response.Content.ReadAsStreamAsync();
@@ -32,7 +39,7 @@ namespace Agile.API.Clients.CallHandling
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex);
+                logger.LogError(ex, "Error deserializing HTTP response content");
                 return "error deserializing";
             }
         }

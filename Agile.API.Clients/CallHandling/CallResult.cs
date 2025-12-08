@@ -5,6 +5,8 @@ using System.Net.Http.Headers;
 using System.Security;
 using System.Threading.Tasks;
 using Agile.API.Clients.Helpers;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Newtonsoft.Json;
 
 namespace Agile.API.Clients.CallHandling
@@ -139,17 +141,22 @@ namespace Agile.API.Clients.CallHandling
 
         public static async Task<CallResult<T>> Wrap(HttpRequestMessage request, HttpResponseMessage response, long elapsedMilliseconds)
         {
+            return await Wrap(request, response, elapsedMilliseconds, NullLogger.Instance);
+        }
+
+        public static async Task<CallResult<T>> Wrap(HttpRequestMessage request, HttpResponseMessage response, long elapsedMilliseconds, ILogger logger)
+        {
             if (!response.IsSuccessStatusCode)
             {
                 // response received but the call failed, expected response type unlikely to be in the response
 
                 // todo: is there an error T defined? if yes, use that, otherwise just the string
 
-                var raw = await CallSerialization.ResponseAsString(response) ?? "";
+                var raw = await CallSerialization.ResponseAsString(response, logger) ?? "";
                 return new CallResult<T>(new Exception($"StatusCode = {response.StatusCode} {raw}"), raw, request, response, elapsedMilliseconds);
             }
 
-            var responseString = await CallSerialization.ResponseAsString(response);
+            var responseString = await CallSerialization.ResponseAsString(response, logger);
 
             try
             {

@@ -408,7 +408,7 @@ namespace Agile.API.Clients
                     response = await Api.HttpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
                     timer.Stop();
 
-                    var result = await CallResult<TResponse>.Wrap(request, response, timer.ElapsedMilliseconds).ConfigureAwait(false);
+                    var result = await CallResult<TResponse>.Wrap(request, response, timer.ElapsedMilliseconds, Api._logger).ConfigureAwait(false);
 
                     if (!result.WasSuccessful)
                         Api.LogError(result);
