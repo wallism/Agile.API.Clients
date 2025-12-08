@@ -4,6 +4,8 @@ using Agile.API.Clients.CallHandling;
 using Agile.API.Clients.Helpers;
 using Agile.API.Clients.Infrastructure;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Newtonsoft.Json;
 
 namespace Agile.API.Clients
@@ -25,6 +27,7 @@ namespace Agile.API.Clients
     {
         private readonly IHttpClientProvider _httpClientProvider;
         private readonly IRateLimitHandler _rateLimitHandler;
+        private readonly ILogger _logger;
         private bool _isDisposed;
 
         /// <summary>
@@ -33,16 +36,23 @@ namespace Agile.API.Clients
         protected IConfiguration Configuration { get; }
 
         /// <summary>
+        /// Gets the logger instance for this API client.
+        /// </summary>
+        protected ILogger Logger => _logger;
+
+        /// <summary>
         /// Initializes a new instance using IHttpClientFactory directly (legacy constructor).
         /// Creates default implementations of collaborators internally.
         /// </summary>
         /// <param name="configuration">Configuration for rate limit settings.</param>
         /// <param name="httpClientFactory">Factory for creating HttpClient instances.</param>
-        protected ApiBase(IConfiguration configuration, IHttpClientFactory httpClientFactory)
+        /// <param name="logger">Optional logger instance. If null, a NullLogger is used.</param>
+        protected ApiBase(IConfiguration configuration, IHttpClientFactory httpClientFactory, ILogger? logger = null)
             : this(
                 configuration,
                 new HttpClientProvider(httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory))),
-                null) // Rate handler created in chained constructor using ApiId
+                null, // Rate handler created in chained constructor using ApiId
+                logger)
         {
         }
 
@@ -52,10 +62,12 @@ namespace Agile.API.Clients
         /// <param name="configuration">Configuration for API settings.</param>
         /// <param name="httpClientProvider">Provider for HttpClient instances.</param>
         /// <param name="rateLimitHandler">Handler for rate limiting (null to create from configuration).</param>
+        /// <param name="logger">Optional logger instance. If null, a NullLogger is used.</param>
         protected ApiBase(
             IConfiguration configuration,
             IHttpClientProvider httpClientProvider,
-            IRateLimitHandler? rateLimitHandler)
+            IRateLimitHandler? rateLimitHandler,
+            ILogger? logger = null)
         {
             Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _httpClientProvider = httpClientProvider ?? throw new ArgumentNullException(nameof(httpClientProvider));
@@ -63,6 +75,10 @@ namespace Agile.API.Clients
             // If no rate handler provided, create one from configuration
             // Note: This requires ApiId to be available, which it is since it's abstract
             _rateLimitHandler = rateLimitHandler ?? new RateLimitHandler(configuration, ApiId);
+            
+            // Use NullLogger if no logger provided - follows Null Object pattern
+            // This ensures logging calls are always safe without null checks
+            _logger = logger ?? NullLogger.Instance;
         }
 
         /// <summary>
@@ -251,14 +267,42 @@ namespace Agile.API.Clients
         }
 
         /// <summary>
-        ///     Implement a handler to do always do something (like log the error) when an error occurs.
-        ///     Keep any action lightweight!
+        /// Logs an error when an API call fails.
         /// </summary>
-        /// <remarks>not actually logging here so this library does not require a ref to any logging libraries</remarks>
-        protected virtual void NotifyError<T>(CallResult<T> result) where T : class
+        /// <typeparam name="T">The response type.</typeparam>
+        /// <param name="result">The failed call result.</param>
+        private void LogError<T>(CallResult<T> result) where T : class
         {
-            var message = $"{ApiId} {result.StatusCode}:{result.AbsoluteUri} {result.Exception?.Message ?? "no ex message"} | {result.RawText}";
-            Debug.WriteLine(message);
+            if (result.Exception is not null)
+            {
+                _logger.LogError(
+                    result.Exception,
+                    "API call failed: {ApiId} {StatusCode} {Uri} | {RawText}",
+                    ApiId,
+                    result.StatusCode,
+                    result.AbsoluteUri,
+                    TruncateForLogging(result.RawText));
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "API call unsuccessful: {ApiId} {StatusCode} {Uri} | {RawText}",
+                    ApiId,
+                    result.StatusCode,
+                    result.AbsoluteUri,
+                    TruncateForLogging(result.RawText));
+            }
+        }
+
+        /// <summary>
+        /// Truncates raw text for logging to avoid excessive log sizes.
+        /// </summary>
+        private static string? TruncateForLogging(string? text, int maxLength = 500)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+                return text;
+            
+            return string.Concat(text.AsSpan(0, maxLength), "...[truncated]");
         }
 
 
@@ -367,14 +411,14 @@ namespace Agile.API.Clients
                     var result = await CallResult<TResponse>.Wrap(request, response, timer.ElapsedMilliseconds).ConfigureAwait(false);
 
                     if (!result.WasSuccessful)
-                        Api.NotifyError(result);
+                        Api.LogError(result);
                     return result;
                 }
                 catch (Exception ex)
                 {
                     timer.Stop();
                     var result = CallResult<TResponse>.BuildException(ex, request, timer.ElapsedMilliseconds);
-                    Api.NotifyError(result);
+                    Api.LogError(result);
                     return result;
                 }
                 finally
