@@ -37,6 +37,52 @@ finally
 }
 ```
 
+#### Constructor accepts optional `ILogger` parameter
+
+**New Feature:** The `ApiBase` constructor now accepts an optional `ILogger` parameter for structured logging:
+
+```csharp
+// Before
+public MyApi(IConfiguration configuration, IHttpClientFactory httpClientFactory)
+    : base(configuration, httpClientFactory)
+
+// After (logger is optional, but recommended)
+public MyApi(
+    IConfiguration configuration, 
+    IHttpClientFactory httpClientFactory,
+    ILogger<MyApi>? logger = null)
+    : base(configuration, httpClientFactory, logger)
+```
+
+#### `NotifyError` virtual method removed
+
+**Breaking Change:** The `NotifyError<T>(CallResult<T> result)` virtual method has been removed. Error handling is now done internally using the `ILogger` passed to the constructor.
+
+**Migration:** Remove any `NotifyError` overrides from derived classes. If you need custom error handling, use the `Logger` property:
+
+```csharp
+// Before
+protected override void NotifyError<T>(CallResult<T> result)
+{
+    Log.Logger.Error("{ApiId} {StatusCode}", ApiId, result.StatusCode);
+}
+
+// After - The base class handles logging automatically, or use Logger property for custom logging
+```
+
+#### Rate limit properties removed from public API
+
+**Breaking Change:** The protected properties `RateGateOccurrences` and `RateGateSeconds` have been removed. Rate limit configuration is now logged automatically by the `ApiBase` constructor.
+
+```csharp
+// Before - manual logging in derived class constructor
+Log.Information("RateGate - Occurrences {count} per {seconds} seconds", 
+    RateGateOccurrences, RateGateSeconds);
+
+// After - remove manual logging, ApiBase logs automatically
+// No code needed - rate limit config is logged by base class
+```
+
 ### `RateGate` Class Deprecation
 
 **Breaking Change:** The `RateGate` class is now marked as `[Obsolete]`. While it remains functional for backwards compatibility, it will generate compiler warnings.

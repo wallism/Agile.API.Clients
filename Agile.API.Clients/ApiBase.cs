@@ -79,6 +79,16 @@ namespace Agile.API.Clients
             // Use NullLogger if no logger provided - follows Null Object pattern
             // This ensures logging calls are always safe without null checks
             _logger = logger ?? NullLogger.Instance;
+            
+            // Log rate limit configuration for diagnostics
+            if (_rateLimitHandler.IsEnabled && _rateLimitHandler is RateLimitHandler handler)
+            {
+                _logger.LogInformation(
+                    "{ApiId} RateLimit configured: {Occurrences} occurrences per {Seconds} seconds",
+                    ApiId,
+                    handler.Occurrences,
+                    handler.TimeUnitSeconds);
+            }
         }
 
         /// <summary>
@@ -151,6 +161,16 @@ namespace Agile.API.Clients
         public ApiMethod<T> PrivatePost<T>(MethodPriority priority, MediaTypeHeaderValue contentType) where T : class
         {
             return new PrivateMethod<T>(this, HttpMethod.Post, priority, contentType);
+        }
+
+        public ApiMethod<T> PrivatePut<T>(MethodPriority priority) where T : class
+        {
+            return PrivatePut<T>(priority, MediaTypes.JSON);
+        }
+
+        public ApiMethod<T> PrivatePut<T>(MethodPriority priority, MediaTypeHeaderValue contentType) where T : class
+        {
+            return new PrivateMethod<T>(this, HttpMethod.Put, priority, contentType);
         }
 
         public ApiMethod<T> PrivateDelete<T>(MethodPriority priority) where T : class

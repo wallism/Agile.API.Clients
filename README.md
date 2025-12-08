@@ -60,11 +60,15 @@ Create a custom API client by inheriting from `ApiBase`:
 using Agile.API.Clients;
 using Agile.API.Clients.CallHandling;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 public class MyApi : ApiBase
 {
-    public MyApi(IConfiguration configuration, IHttpClientFactory httpClientFactory)
-        : base(configuration, httpClientFactory)
+    public MyApi(
+        IConfiguration configuration, 
+        IHttpClientFactory httpClientFactory,
+        ILogger<MyApi>? logger = null)
+        : base(configuration, httpClientFactory, logger)
     {
     }
 
@@ -80,6 +84,12 @@ public class MyApi : ApiBase
     public async Task<CallResult<MyResponse>> PostDataAsync(MyRequest request, CancellationToken cancellationToken = default)
     {
         var method = PrivatePost<MyResponse>(MethodPriority.Normal);
+        return await method.Call("v1/data", payload: request, cancellationToken: cancellationToken);
+    }
+
+    public async Task<CallResult<MyResponse>> PutDataAsync(MyRequest request, CancellationToken cancellationToken = default)
+    {
+        var method = PrivatePut<MyResponse>(MethodPriority.Normal);
         return await method.Call("v1/data", payload: request, cancellationToken: cancellationToken);
     }
 }
@@ -185,7 +195,9 @@ Abstract base class for API clients. Key members:
 | `PublicGet<T>()` | Creates a public GET method |
 | `PrivateGet<T>()` | Creates an authenticated GET method |
 | `PrivatePost<T>()` | Creates an authenticated POST method |
+| `PrivatePut<T>()` | Creates an authenticated PUT method |
 | `PrivateDelete<T>()` | Creates an authenticated DELETE method |
+| `Logger` | Protected property for logging within derived classes |
 
 ### `CallResult<T>`
 
