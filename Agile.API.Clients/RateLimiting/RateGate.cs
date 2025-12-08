@@ -22,6 +22,8 @@ namespace PennedObjects.RateLimiting
     ///         threads.
     ///     </para>
     /// </remarks>
+    [Obsolete("RateGate is obsolete. Use ApiRateLimiter instead, which uses the built-in System.Threading.RateLimiting APIs introduced in .NET 7. " +
+              "ApiRateLimiter provides the same functionality with better performance and is the recommended approach going forward.")]
     public class RateGate : IDisposable
     {
         // Timer used to trigger exiting the semaphore.

@@ -8,11 +8,12 @@ using PennedObjects.RateLimiting;
 
 namespace Agile.API.Clients
 {
-    public abstract class ApiBase
+    public abstract class ApiBase : IDisposable, IAsyncDisposable
     {
         protected IConfiguration Configuration { get; }
         private readonly IHttpClientFactory _httpClientFactory;
         private HttpClient? httpClient;
+        private bool _isDisposed;
 
         protected ApiBase(IConfiguration configuration, 
             IHttpClientFactory httpClientFactory)
@@ -25,7 +26,7 @@ namespace Agile.API.Clients
             var seconds = configuration[$"APIS:{ApiId}:RateLimit:Seconds"];
             RateGateSeconds = string.IsNullOrEmpty(seconds) ? "1" : seconds;
 
-            RateGate = new RateGate(RateLimit.Build(int.Parse(RateGateOccurrences),
+            RateLimiter = new ApiRateLimiter(RateLimit.Build(int.Parse(RateGateOccurrences),
                 TimeSpan.FromSeconds(int.Parse(RateGateSeconds))));
 
             HasRateLimit = true; // force on by default, may be overwritten in inheritors
@@ -44,7 +45,7 @@ namespace Agile.API.Clients
         private HttpClient HttpClient => httpClient ??= _httpClientFactory.CreateClient(HttpClientName);
 
 
-        private RateGate RateGate { get; set; }
+        private ApiRateLimiter RateLimiter { get; set; }
 
         protected string ApiKey { get; private set; }
 
@@ -141,9 +142,50 @@ namespace Agile.API.Clients
         private void PassThroughRateGate<T>(ApiMethod<T> method) where T : class
         {
             if (method.IsHighPriority)
-                RateGate.NotifyPriorityCallMade();
+                RateLimiter.NotifyPriorityCallMade();
             else
-                RateGate?.WaitToProceed();
+                RateLimiter?.WaitToProceed();
+        }
+
+        /// <summary>
+        /// Releases unmanaged resources held by this instance.
+        /// </summary>
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// Releases unmanaged resources held by this instance.
+        /// </summary>
+        /// <param name="disposing">Whether this method is being called from Dispose().</param>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_isDisposed)
+            {
+                if (disposing)
+                {
+                    RateLimiter?.Dispose();
+                }
+                _isDisposed = true;
+            }
+        }
+
+        /// <summary>
+        /// Asynchronously releases unmanaged resources held by this instance.
+        /// </summary>
+        public async ValueTask DisposeAsync()
+        {
+            if (!_isDisposed)
+            {
+                if (RateLimiter != null)
+                {
+                    await RateLimiter.DisposeAsync().ConfigureAwait(false);
+                }
+                _isDisposed = true;
+            }
+            GC.SuppressFinalize(this);
         }
 
         /// <summary>
