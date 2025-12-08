@@ -2,63 +2,107 @@
 using System.Net.Http.Headers;
 using Agile.API.Clients.CallHandling;
 using Agile.API.Clients.Helpers;
+using Agile.API.Clients.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
-using PennedObjects.RateLimiting;
 
 namespace Agile.API.Clients
 {
+    /// <summary>
+    /// Base class for building API clients with built-in rate limiting, retry policies, and error handling.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This class follows the Single Responsibility Principle by delegating HTTP client management
+    /// to <see cref="IHttpClientProvider"/> and rate limiting to <see cref="IRateLimitHandler"/>.
+    /// </para>
+    /// <para>
+    /// Derived classes should implement <see cref="BaseUrl"/> and <see cref="ApiId"/> properties,
+    /// and optionally override <see cref="SetPrivateRequestProperties"/> for authentication.
+    /// </para>
+    /// </remarks>
     public abstract class ApiBase : IDisposable, IAsyncDisposable
     {
-        protected IConfiguration Configuration { get; }
-        private readonly IHttpClientFactory _httpClientFactory;
-        private HttpClient? httpClient;
+        private readonly IHttpClientProvider _httpClientProvider;
+        private readonly IRateLimitHandler _rateLimitHandler;
         private bool _isDisposed;
 
-        protected ApiBase(IConfiguration configuration, 
-            IHttpClientFactory httpClientFactory)
+        /// <summary>
+        /// Gets the configuration source.
+        /// </summary>
+        protected IConfiguration Configuration { get; }
+
+        /// <summary>
+        /// Initializes a new instance using IHttpClientFactory directly (legacy constructor).
+        /// Creates default implementations of collaborators internally.
+        /// </summary>
+        /// <param name="configuration">Configuration for rate limit settings.</param>
+        /// <param name="httpClientFactory">Factory for creating HttpClient instances.</param>
+        protected ApiBase(IConfiguration configuration, IHttpClientFactory httpClientFactory)
+            : this(
+                configuration,
+                new HttpClientProvider(httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory))),
+                null) // Rate handler created in chained constructor using ApiId
         {
-            Configuration = configuration;
-            _httpClientFactory = httpClientFactory;
-
-            var occurrences = configuration[$"APIS:{ApiId}:RateLimit:Occurrences"];
-            RateGateOccurrences = string.IsNullOrEmpty(occurrences) ? "10" : occurrences;
-            var seconds = configuration[$"APIS:{ApiId}:RateLimit:Seconds"];
-            RateGateSeconds = string.IsNullOrEmpty(seconds) ? "1" : seconds;
-
-            RateLimiter = new ApiRateLimiter(RateLimit.Build(int.Parse(RateGateOccurrences),
-                TimeSpan.FromSeconds(int.Parse(RateGateSeconds))));
-
-            HasRateLimit = true; // force on by default, may be overwritten in inheritors
         }
 
+        /// <summary>
+        /// Initializes a new instance with explicit collaborators for better testability and SRP compliance.
+        /// </summary>
+        /// <param name="configuration">Configuration for API settings.</param>
+        /// <param name="httpClientProvider">Provider for HttpClient instances.</param>
+        /// <param name="rateLimitHandler">Handler for rate limiting (null to create from configuration).</param>
+        protected ApiBase(
+            IConfiguration configuration,
+            IHttpClientProvider httpClientProvider,
+            IRateLimitHandler? rateLimitHandler)
+        {
+            Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            _httpClientProvider = httpClientProvider ?? throw new ArgumentNullException(nameof(httpClientProvider));
+            
+            // If no rate handler provided, create one from configuration
+            // Note: This requires ApiId to be available, which it is since it's abstract
+            _rateLimitHandler = rateLimitHandler ?? new RateLimitHandler(configuration, ApiId);
+        }
 
+        /// <summary>
+        /// Sets the authorization header on the HttpClient.
+        /// </summary>
+        /// <param name="header">The authentication header value.</param>
         protected void SetAuthorizationHeader(AuthenticationHeaderValue header)
         {
             HttpClient.DefaultRequestHeaders.Authorization = header;
         }
 
-        public bool HasRateLimit { get; protected set; }
-        protected string RateGateOccurrences { get; set; }
-        protected string RateGateSeconds { get; set; }
+        /// <summary>
+        /// Gets whether rate limiting is enabled for this API.
+        /// </summary>
+        public bool HasRateLimit => _rateLimitHandler.IsEnabled;
 
-        private HttpClient HttpClient => httpClient ??= _httpClientFactory.CreateClient(HttpClientName);
+        /// <summary>
+        /// Gets the HttpClient instance for this API.
+        /// Thread-safe: uses IHttpClientProvider for proper synchronization.
+        /// </summary>
+        private HttpClient HttpClient => _httpClientProvider.GetClient(HttpClientName);
 
-
-        private ApiRateLimiter RateLimiter { get; set; }
-
-        protected string ApiKey { get; private set; }
-
-        protected string ApiSecret { get; private set; }
-
+        /// <summary>
+        /// Gets the base URL for this API.
+        /// </summary>
         protected abstract string BaseUrl { get; }
 
         /// <summary>
-        ///     Identifies which API it is (useful for logging)
+        /// Identifies which API this is (useful for logging and configuration lookup).
         /// </summary>
         public abstract string ApiId { get; }
 
-        protected virtual string HttpClientName { get; set; }  = DefaultHttpClientName;
+        /// <summary>
+        /// Gets or sets the named HttpClient to use from the factory.
+        /// </summary>
+        protected virtual string HttpClientName { get; set; } = DefaultHttpClientName;
+
+        /// <summary>
+        /// The default HttpClient name used when none is specified.
+        /// </summary>
         public const string DefaultHttpClientName = "DefaultHttpClient";
 
         public ApiMethod<T> PublicGet<T>(MethodPriority priority) where T : class
@@ -120,31 +164,52 @@ namespace Agile.API.Clients
         }
 
 
-        protected virtual async Task SetPublicRequestProperties(HttpRequestMessage request, string method, object? rawPayload = null, string propsWithNonce = "")
+        /// <summary>
+        /// Sets properties on a public HTTP request before sending.
+        /// </summary>
+        /// <param name="request">The request to configure.</param>
+        /// <param name="method">The API method path.</param>
+        /// <param name="rawPayload">Optional payload for the request.</param>
+        /// <param name="propsWithNonce">Optional properties with nonce.</param>
+        protected virtual Task SetPublicRequestProperties(HttpRequestMessage request, string method, object? rawPayload = null, string propsWithNonce = "")
         {
-            try
+            if (request.RequestUri is not null)
             {
                 request.Headers.Host = request.RequestUri.Host;
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex);
-                throw;
-            }
+            return Task.CompletedTask;
         }
 
-        protected virtual async Task SetPrivateRequestProperties(HttpRequestMessage request, string method, object? rawPayload = null, string propsWithNonce = "")
+        /// <summary>
+        /// Sets properties on a private (authenticated) HTTP request before sending.
+        /// </summary>
+        /// <param name="request">The request to configure.</param>
+        /// <param name="method">The API method path.</param>
+        /// <param name="rawPayload">Optional payload for the request.</param>
+        /// <param name="propsWithNonce">Optional properties with nonce.</param>
+        /// <exception cref="NotImplementedException">Thrown when not overridden in derived class.</exception>
+        protected virtual Task SetPrivateRequestProperties(HttpRequestMessage request, string method, object? rawPayload = null, string propsWithNonce = "")
         {
             throw new NotImplementedException("Required if calling private methods on the API");
         }
 
 
-        private void PassThroughRateGate<T>(ApiMethod<T> method) where T : class
+        /// <summary>
+        /// Asynchronously enforces rate limiting before an API call.
+        /// </summary>
+        /// <typeparam name="T">The response type.</typeparam>
+        /// <param name="method">The API method being called.</param>
+        /// <param name="cancellationToken">Token to cancel the wait operation.</param>
+        private async ValueTask PassThroughRateGateAsync<T>(ApiMethod<T> method, CancellationToken cancellationToken) where T : class
         {
             if (method.IsHighPriority)
-                RateLimiter.NotifyPriorityCallMade();
+            {
+                _rateLimitHandler.NotifyPriorityCall();
+            }
             else
-                RateLimiter?.WaitToProceed();
+            {
+                await _rateLimitHandler.WaitToProceedAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
 
         /// <summary>
@@ -166,7 +231,7 @@ namespace Agile.API.Clients
             {
                 if (disposing)
                 {
-                    RateLimiter?.Dispose();
+                    _rateLimitHandler.Dispose();
                 }
                 _isDisposed = true;
             }
@@ -179,10 +244,7 @@ namespace Agile.API.Clients
         {
             if (!_isDisposed)
             {
-                if (RateLimiter != null)
-                {
-                    await RateLimiter.DisposeAsync().ConfigureAwait(false);
-                }
+                await _rateLimitHandler.DisposeAsync().ConfigureAwait(false);
                 _isDisposed = true;
             }
             GC.SuppressFinalize(this);
@@ -221,7 +283,7 @@ namespace Agile.API.Clients
                 var uri = Api.GetPublicRequestUri(path, querystring);
 
                 var request = new HttpRequestMessage(HttpMethod, uri);
-                await Api.SetPublicRequestProperties(request, path, payload, querystring);
+                await Api.SetPublicRequestProperties(request, path, payload, querystring).ConfigureAwait(false);
 
                 // this adds a content body (POST only)
                 AddPayloadToBody(request, payload);
@@ -241,7 +303,7 @@ namespace Agile.API.Clients
                 var uri = Api.GetPrivateRequestUri(path, querystring);
 
                 var request = new HttpRequestMessage(HttpMethod, uri);
-                await Api.SetPrivateRequestProperties(request, path, payload, querystring);
+                await Api.SetPrivateRequestProperties(request, path, payload, querystring).ConfigureAwait(false);
 
                 // this adds a content body (POST only)
                 AddPayloadToBody(request, payload);
@@ -289,20 +351,20 @@ namespace Agile.API.Clients
                 string querystring = "",
                 CancellationToken cancellationToken = default)
             {
-                //            Console.WriteLine($"[Thread:{Thread.CurrentThread.ManagedThreadId}] {path}");
-                var request = await CreateRequest(path, querystring, payload);
-                Api.PassThroughRateGate(this);
+                var request = await CreateRequest(path, querystring, payload).ConfigureAwait(false);
+                
+                // Async rate limiting - no thread blocking
+                await Api.PassThroughRateGateAsync(this, cancellationToken).ConfigureAwait(false);
 
                 HttpResponseMessage? response = null;
                 var timer = Stopwatch.StartNew();
-                // two separate (nested) try catch blocks because want to distinguish between an ex occuring making the call
-                // and an ex occuring processing the response
+                
                 try
                 {
-                    response = await Api.HttpClient.SendAsync(request, cancellationToken);
+                    response = await Api.HttpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
                     timer.Stop();
 
-                    var result = await CallResult<TResponse>.Wrap(request, response, timer.ElapsedMilliseconds);
+                    var result = await CallResult<TResponse>.Wrap(request, response, timer.ElapsedMilliseconds).ConfigureAwait(false);
 
                     if (!result.WasSuccessful)
                         Api.NotifyError(result);

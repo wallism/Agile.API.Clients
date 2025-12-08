@@ -25,10 +25,20 @@ namespace Agile.API.Clients.CallHandling
     /// </summary>
     public class CallResult<T> where T : class
     {
+        /// <summary>
+        /// Sentinel value used when no HTTP call was made (e.g., exception before request).
+        /// </summary>
+        public const string NoCallMadeUri = "nocallmade";
+
+        /// <summary>
+        /// Sentinel value used when the request URI is not available.
+        /// </summary>
+        public const string UnknownUri = "unknown";
+
         protected CallResult(HttpResponseMessage? response, HttpRequestMessage request, long elapsedMilliseconds)
         {
             // response not stored on a property because it gets disposed.
-            AbsoluteUri = request.RequestUri.AbsoluteUri;
+            AbsoluteUri = request.RequestUri?.AbsoluteUri ?? UnknownUri;
             Elapsed = elapsedMilliseconds;
 
             if (response != null)
@@ -61,7 +71,7 @@ namespace Agile.API.Clients.CallHandling
         }
         private CallResult(Exception ex, string raw)
         {
-            AbsoluteUri = "nocallmade";
+            AbsoluteUri = NoCallMadeUri;
             Exception = ex;
             RawText = raw;
         }
