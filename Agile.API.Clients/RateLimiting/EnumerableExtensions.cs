@@ -1,6 +1,4 @@
-﻿using System.Collections.Generic;
-
-namespace PennedObjects.RateLimiting
+﻿namespace Agile.API.Clients.RateLimiting
 {
     /// <summary>
     /// Extension methods for rate limiting IEnumerable sequences.

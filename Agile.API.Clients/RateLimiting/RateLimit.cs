@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace PennedObjects.RateLimiting
+﻿namespace Agile.API.Clients.RateLimiting
 {
     /// <summary>
     /// Represents a rate limit configuration specifying the number of occurrences 

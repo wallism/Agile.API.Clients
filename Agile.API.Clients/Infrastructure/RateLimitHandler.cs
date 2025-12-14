@@ -1,5 +1,5 @@
+using Agile.API.Clients.RateLimiting;
 using Microsoft.Extensions.Configuration;
-using PennedObjects.RateLimiting;
 
 namespace Agile.API.Clients.Infrastructure
 {

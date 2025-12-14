@@ -1,8 +1,6 @@
-using System;
-using System.Threading;
 using System.Threading.RateLimiting;
 
-namespace PennedObjects.RateLimiting
+namespace Agile.API.Clients.RateLimiting
 {
     /// <summary>
     /// A rate limiter that uses the built-in .NET <see cref="SlidingWindowRateLimiter"/> 
