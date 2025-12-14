@@ -1,6 +1,6 @@
 using System;
+using Agile.API.Clients.RateLimiting;
 using NUnit.Framework;
-using PennedObjects.RateLimiting;
 
 namespace Agile.API.Clients.Tests;
 

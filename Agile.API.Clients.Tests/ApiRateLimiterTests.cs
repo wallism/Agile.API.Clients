@@ -3,8 +3,8 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Agile.API.Clients.RateLimiting;
 using NUnit.Framework;
-using PennedObjects.RateLimiting;
 
 namespace Agile.API.Clients.Tests;
 

@@ -1,9 +1,7 @@
-﻿using System;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Threading;
 
-namespace PennedObjects.RateLimiting
+namespace Agile.API.Clients.RateLimiting
 {
     /// <summary>
     ///     Used to control the rate of some occurrence per unit of time.
